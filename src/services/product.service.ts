@@ -1,23 +1,48 @@
 import { prisma } from '../prisma/client';
 import { HttpError } from '../utils/HttpError';
 
-export type ProductInput = {
+export interface Product {
   name: string;
   description: string;
+  slug: string;
+  discountType?: string;
+  discount?: string;
+}
+
+export type ProductInput = Product;
+
+const requireString = (input: Partial<ProductInput>, field: keyof Product) => {
+  const value = input[field];
+  if (!value || typeof value !== 'string' || !value.trim()) {
+    throw new HttpError(400, `Field "${field}" is required`);
+  }
+};
+
+const optionalString = (
+  input: Partial<ProductInput>,
+  field: keyof Product
+) => {
+  const value = input[field];
+  if (value !== undefined && value !== null && typeof value !== 'string') {
+    throw new HttpError(400, `Field "${field}" must be a string`);
+  }
 };
 
 const validate = (input: Partial<ProductInput>) => {
-  if (!input.name || typeof input.name !== 'string' || !input.name.trim()) {
-    throw new HttpError(400, 'Field "name" is required');
-  }
-  if (
-    !input.description ||
-    typeof input.description !== 'string' ||
-    !input.description.trim()
-  ) {
-    throw new HttpError(400, 'Field "description" is required');
-  }
+  requireString(input, 'name');
+  requireString(input, 'description');
+  requireString(input, 'slug');
+  optionalString(input, 'discountType');
+  optionalString(input, 'discount');
 };
+
+const normalize = (input: ProductInput) => ({
+  name: input.name.trim(),
+  description: input.description.trim(),
+  slug: input.slug.trim(),
+  discountType: input.discountType?.trim() || null,
+  discount: input.discount?.trim() || null,
+});
 
 export const productService = {
   list: () => prisma.product.findMany({ orderBy: { id: 'asc' } }),
@@ -30,9 +55,7 @@ export const productService = {
 
   create: async (input: ProductInput) => {
     validate(input);
-    return prisma.product.create({
-      data: { name: input.name.trim(), description: input.description.trim() },
-    });
+    return prisma.product.create({ data: normalize(input) });
   },
 
   update: async (id: number, input: ProductInput) => {
@@ -40,7 +63,7 @@ export const productService = {
     await productService.getById(id);
     return prisma.product.update({
       where: { id },
-      data: { name: input.name.trim(), description: input.description.trim() },
+      data: normalize(input),
     });
   },
 

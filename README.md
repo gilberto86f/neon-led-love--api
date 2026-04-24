@@ -205,15 +205,37 @@ If you get this, the server is working.
 
 The API base URL is `http://localhost:3000/api`. All product endpoints live under `/products`.
 
-| Method | Path             | Body (JSON)                | What it does            |
-|--------|------------------|----------------------------|-------------------------|
-| GET    | `/products`      | —                          | List all products       |
-| GET    | `/products/:id`  | —                          | Get one product by id   |
-| POST   | `/products`      | `{ name, description }`    | Create a new product    |
-| PUT    | `/products/:id`  | `{ name, description }`    | Replace a product       |
-| DELETE | `/products/:id`  | —                          | Delete a product        |
+| Method | Path             | Body (JSON)           | What it does            |
+|--------|------------------|-----------------------|-------------------------|
+| GET    | `/products`      | —                     | List all products       |
+| GET    | `/products/:id`  | —                     | Get one product by id   |
+| POST   | `/products`      | [Product](#product-fields) | Create a new product    |
+| PUT    | `/products/:id`  | [Product](#product-fields) | Replace a product       |
+| DELETE | `/products/:id`  | —                     | Delete a product        |
 
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
+
+### Product fields
+
+```ts
+interface Product {
+  name: string;          // required
+  description: string;   // required
+  slug: string;          // required — unique, URL-friendly identifier (e.g. "neon-heart")
+  discountType?: string; // optional — e.g. "percentage" or "fixed"
+  discount?: string;     // optional — e.g. "10" or "5.00"
+}
+```
+
+| Field          | Type   | Required | Notes                                                  |
+|----------------|--------|----------|--------------------------------------------------------|
+| `name`         | string | yes      | Product display name.                                  |
+| `description`  | string | yes      | Free-form description.                                 |
+| `slug`         | string | yes      | Unique. Used for public URLs. `neon-heart-xl`, etc.    |
+| `discountType` | string | no       | Free-form tag (`percentage`, `fixed`, …).              |
+| `discount`     | string | no       | Stored as string for MVP simplicity.                   |
+
+The server rejects a create/update request with `400` if any required field is missing, empty, or whitespace. Strings are trimmed before saving.
 
 ### 7.1. curl examples (works in PowerShell)
 
@@ -222,7 +244,7 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 ```powershell
 curl -X POST http://localhost:3000/api/products `
   -H "Content-Type: application/json" `
-  -d '{"name":"Neon Heart","description":"Pink LED neon heart sign"}'
+  -d '{"name":"Neon Heart","description":"Pink LED neon heart sign","slug":"neon-heart","discountType":"percentage","discount":"10"}'
 ```
 
 The backtick (`` ` ``) is PowerShell's line-continuation character. You can also write it on one line.
@@ -244,7 +266,7 @@ curl http://localhost:3000/api/products/1
 ```powershell
 curl -X PUT http://localhost:3000/api/products/1 `
   -H "Content-Type: application/json" `
-  -d '{"name":"Neon Heart XL","description":"Bigger pink heart"}'
+  -d '{"name":"Neon Heart XL","description":"Bigger pink heart","slug":"neon-heart-xl"}'
 ```
 
 **Delete a product:**
@@ -259,7 +281,13 @@ curl -X DELETE http://localhost:3000/api/products/1
 2. Add a request: `POST http://localhost:3000/api/products`.
 3. In the **Body** tab, pick **raw → JSON**, and paste:
    ```json
-   { "name": "Neon Heart", "description": "Pink LED neon heart sign" }
+   {
+     "name": "Neon Heart",
+     "description": "Pink LED neon heart sign",
+     "slug": "neon-heart",
+     "discountType": "percentage",
+     "discount": "10"
+   }
    ```
 4. Send. You should get a `201 Created` response.
 
@@ -291,7 +319,14 @@ type ApiNeonResponse<R = unknown> = {
   "success": 1,
   "status": 200,
   "results": [
-    { "id": 1, "name": "Neon Heart", "description": "Pink LED neon heart sign" }
+    {
+      "id": 1,
+      "name": "Neon Heart",
+      "description": "Pink LED neon heart sign",
+      "slug": "neon-heart",
+      "discountType": "percentage",
+      "discount": "10"
+    }
   ],
   "total": 1
 }
@@ -303,7 +338,14 @@ type ApiNeonResponse<R = unknown> = {
 {
   "success": 1,
   "status": 200,
-  "data": { "id": 1, "name": "Neon Heart", "description": "Pink LED neon heart sign" }
+  "data": {
+    "id": 1,
+    "name": "Neon Heart",
+    "description": "Pink LED neon heart sign",
+    "slug": "neon-heart",
+    "discountType": "percentage",
+    "discount": "10"
+  }
 }
 ```
 
@@ -438,11 +480,14 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
-export type Product = {
+export interface Product {
   id: number;
   name: string;
   description: string;
-};
+  slug: string;
+  discountType?: string;
+  discount?: string;
+}
 
 export type ApiNeonResponse<R = unknown> = {
   success?: number;
