@@ -470,6 +470,8 @@ Newer npm versions strip `--`. The script in [package.json](package.json) alread
 
 > **Tip:** `npm run prisma:studio` is the easiest way to see what's in your database without writing SQL.
 
+> **Migration names:** `npm run prisma:migrate` will prompt you to enter a short name for each migration (e.g. `add-price-field`). Use a lowercase, hyphen-separated description of what changed — it becomes part of the migration folder name in `prisma/migrations/` and helps you trace history.
+
 ---
 
 ## 12. Connecting from your Angular frontend
