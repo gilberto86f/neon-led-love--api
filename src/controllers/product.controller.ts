@@ -3,7 +3,7 @@ import { productService } from '../services/product.service';
 import { ok, okList } from '../utils/apiResponse';
 import { HttpError } from '../utils/HttpError';
 
-const parseId = (raw: string): number => {
+const parseId = (raw: string | string[]): number => {
   const id = Number(raw);
   if (!Number.isInteger(id) || id <= 0) {
     throw new HttpError(400, 'Invalid id');
@@ -21,10 +21,9 @@ export const productController = {
     }
   },
 
-  getById: async (req: Request, res: Response, next: NextFunction) => {
+  getBySlug: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const id = parseId(req.params.id);
-      const product = await productService.getById(id);
+      const product = await productService.getBySlug(req.params.slug as string);
       res.status(200).json(ok(product));
     } catch (err) {
       next(err);

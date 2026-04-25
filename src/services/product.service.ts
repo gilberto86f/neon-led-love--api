@@ -51,6 +51,12 @@ const normalize = (input: ProductInput) => ({
 export const productService = {
   list: () => prisma.product.findMany({ orderBy: { id: "asc" } }),
 
+  getBySlug: async (slug: string) => {
+    const product = await prisma.product.findUnique({ where: { slug } });
+    if (!product) throw new HttpError(404, `Product "${slug}" not found`);
+    return product;
+  },
+
   getById: async (id: number) => {
     const product = await prisma.product.findUnique({ where: { id } });
     if (!product) throw new HttpError(404, `Product ${id} not found`);

@@ -209,7 +209,7 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 | Method | Path            | Body (JSON)                | What it does          |
 | ------ | --------------- | -------------------------- | --------------------- |
 | GET    | `/products`     | —                          | List all products     |
-| GET    | `/products/:id` | —                          | Get one product by id |
+| GET    | `/products/:slug` | —                          | Get one product by slug |
 | POST   | `/products`     | [Product](#product-fields) | Create a new product  |
 | PUT    | `/products/:id` | [Product](#product-fields) | Replace a product     |
 | DELETE | `/products/:id` | —                          | Delete a product      |
@@ -259,7 +259,7 @@ curl http://localhost:3000/api/products
 **Get one product:**
 
 ```powershell
-curl http://localhost:3000/api/products/1
+curl http://localhost:3000/api/products/neon-heart
 ```
 
 **Update a product:**
