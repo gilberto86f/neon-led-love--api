@@ -1,39 +1,43 @@
-import { prisma } from '../prisma/client';
-import { HttpError } from '../utils/HttpError';
+import { prisma } from "../prisma/client";
+import { HttpError } from "../utils/HttpError";
 
 export interface Product {
   name: string;
   description: string;
   slug: string;
   discountType?: string;
-  discount?: string;
+  discount?: number;
 }
 
 export type ProductInput = Product;
 
 const requireString = (input: Partial<ProductInput>, field: keyof Product) => {
   const value = input[field];
-  if (!value || typeof value !== 'string' || !value.trim()) {
-    throw new HttpError(400, `Field "${field}" is required`);
+  if (!value || typeof value !== "string" || !value.trim()) {
+    throw new HttpError(400, `Field is required: "${field}"`);
   }
 };
 
-const optionalString = (
-  input: Partial<ProductInput>,
-  field: keyof Product
-) => {
+const optionalString = (input: Partial<ProductInput>, field: keyof Product) => {
   const value = input[field];
-  if (value !== undefined && value !== null && typeof value !== 'string') {
-    throw new HttpError(400, `Field "${field}" must be a string`);
+  if (value !== undefined && value !== null && typeof value !== "string") {
+    throw new HttpError(400, `Field must be a string: "${field}"`);
+  }
+};
+
+const optionalNumber = (input: Partial<ProductInput>, field: keyof Product) => {
+  const value = input[field];
+  if (value !== undefined && value !== null && typeof value !== "number") {
+    throw new HttpError(400, `Field must be a number: "${field}"`);
   }
 };
 
 const validate = (input: Partial<ProductInput>) => {
-  requireString(input, 'name');
-  requireString(input, 'description');
-  requireString(input, 'slug');
-  optionalString(input, 'discountType');
-  optionalString(input, 'discount');
+  requireString(input, "name");
+  requireString(input, "description");
+  requireString(input, "slug");
+  optionalString(input, "discountType");
+  optionalNumber(input, "discount");
 };
 
 const normalize = (input: ProductInput) => ({
@@ -41,11 +45,11 @@ const normalize = (input: ProductInput) => ({
   description: input.description.trim(),
   slug: input.slug.trim(),
   discountType: input.discountType?.trim() || null,
-  discount: input.discount?.trim() || null,
+  discount: input.discount ?? null,
 });
 
 export const productService = {
-  list: () => prisma.product.findMany({ orderBy: { id: 'asc' } }),
+  list: () => prisma.product.findMany({ orderBy: { id: "asc" } }),
 
   getById: async (id: number) => {
     const product = await prisma.product.findUnique({ where: { id } });

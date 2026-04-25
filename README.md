@@ -18,6 +18,7 @@ Backend API for an e-commerce site that sells LED neon signs. This document is w
 10. [Common errors and how to fix them](#10-common-errors-and-how-to-fix-them)
 11. [Useful npm scripts](#11-useful-npm-scripts)
 12. [Connecting from your Angular frontend](#12-connecting-from-your-angular-frontend)
+13. [After pulling changes](#13-after-pulling-changes)
 
 ---
 
@@ -48,16 +49,16 @@ The "backend" is the program that does steps 1–3. In this project, that progra
 
 ## 3. Tech stack (and what each piece does)
 
-| Tool | What it is | Why we use it |
-|---|---|---|
-| **Node.js** | A JavaScript runtime that runs JS outside the browser. | Lets us write the server in JS/TS, the same language as the frontend. |
-| **TypeScript** | JavaScript with types. | Catches bugs at compile time. Same language family as Angular. |
-| **Express** | A tiny library for building HTTP servers in Node. | Handles routing (`GET /products`, `POST /products`, etc.) without much boilerplate. |
-| **PostgreSQL** | A relational database. | Stores products in tables with rows and columns. Industry standard. |
-| **Prisma** | An **ORM** (Object–Relational Mapper). | Lets us read/write the database using TypeScript objects instead of raw SQL. Also auto-generates and applies schema migrations. |
-| **Docker** | A tool that runs apps in isolated containers. | Lets us run PostgreSQL without installing it on your system. One command, no global install. |
-| **dotenv** | Loads variables from a `.env` file into `process.env`. | Keeps secrets (DB password) out of source code. |
-| **CORS middleware** | Tells the browser our server accepts requests from other origins. | Without it, your Angular dev server (different port) can't call this API. |
+| Tool                | What it is                                                        | Why we use it                                                                                                                   |
+| ------------------- | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| **Node.js**         | A JavaScript runtime that runs JS outside the browser.            | Lets us write the server in JS/TS, the same language as the frontend.                                                           |
+| **TypeScript**      | JavaScript with types.                                            | Catches bugs at compile time. Same language family as Angular.                                                                  |
+| **Express**         | A tiny library for building HTTP servers in Node.                 | Handles routing (`GET /products`, `POST /products`, etc.) without much boilerplate.                                             |
+| **PostgreSQL**      | A relational database.                                            | Stores products in tables with rows and columns. Industry standard.                                                             |
+| **Prisma**          | An **ORM** (Object–Relational Mapper).                            | Lets us read/write the database using TypeScript objects instead of raw SQL. Also auto-generates and applies schema migrations. |
+| **Docker**          | A tool that runs apps in isolated containers.                     | Lets us run PostgreSQL without installing it on your system. One command, no global install.                                    |
+| **dotenv**          | Loads variables from a `.env` file into `process.env`.            | Keeps secrets (DB password) out of source code.                                                                                 |
+| **CORS middleware** | Tells the browser our server accepts requests from other origins. | Without it, your Angular dev server (different port) can't call this API.                                                       |
 
 > **What is an ORM?** Instead of writing SQL like `SELECT * FROM Product WHERE id = 1`, you write `prisma.product.findUnique({ where: { id: 1 } })`. Prisma generates the SQL for you and gives back typed JavaScript objects.
 
@@ -194,7 +195,7 @@ curl http://localhost:3000/health
 Expected:
 
 ```json
-{"success":1,"status":200,"data":{"ok":true}}
+{ "success": 1, "status": 200, "data": { "ok": true } }
 ```
 
 If you get this, the server is working.
@@ -205,13 +206,13 @@ If you get this, the server is working.
 
 The API base URL is `http://localhost:3000/api`. All product endpoints live under `/products`.
 
-| Method | Path             | Body (JSON)           | What it does            |
-|--------|------------------|-----------------------|-------------------------|
-| GET    | `/products`      | —                     | List all products       |
-| GET    | `/products/:id`  | —                     | Get one product by id   |
-| POST   | `/products`      | [Product](#product-fields) | Create a new product    |
-| PUT    | `/products/:id`  | [Product](#product-fields) | Replace a product       |
-| DELETE | `/products/:id`  | —                     | Delete a product        |
+| Method | Path            | Body (JSON)                | What it does          |
+| ------ | --------------- | -------------------------- | --------------------- |
+| GET    | `/products`     | —                          | List all products     |
+| GET    | `/products/:id` | —                          | Get one product by id |
+| POST   | `/products`     | [Product](#product-fields) | Create a new product  |
+| PUT    | `/products/:id` | [Product](#product-fields) | Replace a product     |
+| DELETE | `/products/:id` | —                          | Delete a product      |
 
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 
@@ -219,21 +220,21 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 
 ```ts
 interface Product {
-  name: string;          // required
-  description: string;   // required
-  slug: string;          // required — unique, URL-friendly identifier (e.g. "neon-heart")
+  name: string; // required
+  description: string; // required
+  slug: string; // required — unique, URL-friendly identifier (e.g. "neon-heart")
   discountType?: string; // optional — e.g. "percentage" or "fixed"
-  discount?: string;     // optional — e.g. "10" or "5.00"
+  discount?: number; // optional — e.g. 10 or 5
 }
 ```
 
-| Field          | Type   | Required | Notes                                                  |
-|----------------|--------|----------|--------------------------------------------------------|
-| `name`         | string | yes      | Product display name.                                  |
-| `description`  | string | yes      | Free-form description.                                 |
-| `slug`         | string | yes      | Unique. Used for public URLs. `neon-heart-xl`, etc.    |
-| `discountType` | string | no       | Free-form tag (`percentage`, `fixed`, …).              |
-| `discount`     | string | no       | Stored as string for MVP simplicity.                   |
+| Field          | Type   | Required | Notes                                               |
+| -------------- | ------ | -------- | --------------------------------------------------- |
+| `name`         | string | yes      | Product display name.                               |
+| `description`  | string | yes      | Free-form description.                              |
+| `slug`         | string | yes      | Unique. Used for public URLs. `neon-heart-xl`, etc. |
+| `discountType` | string | no       | Free-form tag (`percentage`, `fixed`, …).           |
+| `discount`     | number | no       | Integer discount value (e.g. `10` for 10%).         |
 
 The server rejects a create/update request with `400` if any required field is missing, empty, or whitespace. Strings are trimmed before saving.
 
@@ -244,7 +245,7 @@ The server rejects a create/update request with `400` if any required field is m
 ```powershell
 curl -X POST http://localhost:3000/api/products `
   -H "Content-Type: application/json" `
-  -d '{"name":"Neon Heart","description":"Pink LED neon heart sign","slug":"neon-heart","discountType":"percentage","discount":"10"}'
+  -d '{"name":"Neon Heart","description":"Pink LED neon heart sign","slug":"neon-heart","discountType":"percentage","discount":10}'
 ```
 
 The backtick (`` ` ``) is PowerShell's line-continuation character. You can also write it on one line.
@@ -286,7 +287,7 @@ curl -X DELETE http://localhost:3000/api/products/1
      "description": "Pink LED neon heart sign",
      "slug": "neon-heart",
      "discountType": "percentage",
-     "discount": "10"
+     "discount": 10
    }
    ```
 4. Send. You should get a `201 Created` response.
@@ -299,14 +300,14 @@ curl -X DELETE http://localhost:3000/api/products/1
 
 ```ts
 type ApiNeonResponse<R = unknown> = {
-  success?: number;     // 1 = ok, 0 = error
-  status?: number;      // HTTP status code
-  error?: any;          // error message (only on failure)
-  results?: R[];        // array (used by list endpoints)
-  data?: R;             // single object (used by single-item endpoints)
-  total?: number;       // count of results
-  previous?: string;    // pagination (future)
-  next?: string;        // pagination (future)
+  success?: number; // 1 = ok, 0 = error
+  status?: number; // HTTP status code
+  error?: any; // error message (only on failure)
+  results?: R[]; // array (used by list endpoints)
+  data?: R; // single object (used by single-item endpoints)
+  total?: number; // count of results
+  previous?: string; // pagination (future)
+  next?: string; // pagination (future)
 };
 ```
 
@@ -325,7 +326,7 @@ type ApiNeonResponse<R = unknown> = {
       "description": "Pink LED neon heart sign",
       "slug": "neon-heart",
       "discountType": "percentage",
-      "discount": "10"
+      "discount": 10
     }
   ],
   "total": 1
@@ -344,7 +345,7 @@ type ApiNeonResponse<R = unknown> = {
     "description": "Pink LED neon heart sign",
     "slug": "neon-heart",
     "discountType": "percentage",
-    "discount": "10"
+    "discount": 10
   }
 }
 ```
@@ -355,7 +356,7 @@ type ApiNeonResponse<R = unknown> = {
 {
   "success": 0,
   "status": 400,
-  "error": "Field \"name\" is required"
+  "error": "Field required: \"name\""
 }
 ```
 
@@ -455,17 +456,17 @@ Newer npm versions strip `--`. The script in [package.json](package.json) alread
 
 ## 11. Useful npm scripts
 
-| Script | What it does |
-|---|---|
-| `npm run dev` | Start the server in dev mode (auto-restart on save). |
-| `npm run build` | Compile TS to JS into `dist/`. |
-| `npm start` | Run the compiled JS from `dist/`. Used in production. |
-| `npm run prisma:generate` | Regenerate the typed Prisma Client. Run after editing `schema.prisma`. |
-| `npm run prisma:migrate` | Create + apply a new migration. |
-| `npm run prisma:studio` | Open Prisma Studio — a web UI to browse/edit DB rows at `http://localhost:5555`. |
-| `npm run db:up` | Start the PostgreSQL Docker container. |
-| `npm run db:down` | Stop the PostgreSQL container (data is preserved). |
-| `npm run db:logs` | Tail the Postgres container logs. |
+| Script                    | What it does                                                                     |
+| ------------------------- | -------------------------------------------------------------------------------- |
+| `npm run dev`             | Start the server in dev mode (auto-restart on save).                             |
+| `npm run build`           | Compile TS to JS into `dist/`.                                                   |
+| `npm start`               | Run the compiled JS from `dist/`. Used in production.                            |
+| `npm run prisma:generate` | Regenerate the typed Prisma Client. Run after editing `schema.prisma`.           |
+| `npm run prisma:migrate`  | Create + apply a new migration.                                                  |
+| `npm run prisma:studio`   | Open Prisma Studio — a web UI to browse/edit DB rows at `http://localhost:5555`. |
+| `npm run db:up`           | Start the PostgreSQL Docker container.                                           |
+| `npm run db:down`         | Stop the PostgreSQL container (data is preserved).                               |
+| `npm run db:logs`         | Tail the Postgres container logs.                                                |
 
 > **Tip:** `npm run prisma:studio` is the easiest way to see what's in your database without writing SQL.
 
@@ -476,9 +477,9 @@ Newer npm versions strip `--`. The script in [package.json](package.json) alread
 In your Angular app, create a service that talks to this API:
 
 ```ts
-import { HttpClient } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
-import { Observable } from 'rxjs';
+import { HttpClient } from "@angular/common/http";
+import { Injectable, inject } from "@angular/core";
+import { Observable } from "rxjs";
 
 export interface Product {
   id: number;
@@ -486,7 +487,7 @@ export interface Product {
   description: string;
   slug: string;
   discountType?: string;
-  discount?: string;
+  discount?: number;
 }
 
 export type ApiNeonResponse<R = unknown> = {
@@ -498,16 +499,16 @@ export type ApiNeonResponse<R = unknown> = {
   total?: number;
 };
 
-@Injectable({ providedIn: 'root' })
+@Injectable({ providedIn: "root" })
 export class ProductService {
   private http = inject(HttpClient);
-  private base = 'http://localhost:3000/api/products';
+  private base = "http://localhost:3000/api/products";
 
   list(): Observable<ApiNeonResponse<Product>> {
     return this.http.get<ApiNeonResponse<Product>>(this.base);
   }
 
-  create(input: Omit<Product, 'id'>): Observable<ApiNeonResponse<Product>> {
+  create(input: Omit<Product, "id">): Observable<ApiNeonResponse<Product>> {
     return this.http.post<ApiNeonResponse<Product>>(this.base, input);
   }
 }
@@ -516,3 +517,53 @@ export class ProductService {
 Make sure `HttpClientModule` (or `provideHttpClient()` in standalone setups) is registered in your app config.
 
 That's it. Build a component, inject `ProductService`, render `response.results`. Welcome to backend development.
+
+---
+
+## 13. After pulling changes
+
+Whenever you pull new commits from the repository, follow these steps to bring your local environment up to date.
+
+### 13.1. Install any new dependencies
+
+```powershell
+npm install
+```
+
+Run this every time `package.json` changes. It's safe to run even when nothing changed.
+
+### 13.2. Apply database migrations (if the schema changed)
+
+If `prisma/schema.prisma` was modified (a field was added, renamed, or its type changed), you need to apply the migration to your local database:
+
+```powershell
+npm run prisma:migrate
+```
+
+This will:
+1. Detect what changed between the last applied migration and the current schema.
+2. Generate a new SQL migration file.
+3. Apply it to your PostgreSQL database.
+4. Regenerate the Prisma Client so TypeScript types stay in sync.
+
+> **How do I know if the schema changed?** Look at the git diff for `prisma/schema.prisma`, or check `prisma/migrations/` for new folders. If in doubt, running `npm run prisma:migrate` when nothing changed is harmless.
+
+### 13.3. Restart the dev server
+
+If the server was already running, stop it (`Ctrl+C`) and start it again:
+
+```powershell
+npm run dev
+```
+
+`ts-node-dev` restarts automatically on file saves, but it does **not** pick up new migration data or environment variable changes without a full restart.
+
+### Summary checklist
+
+| Situation                                      | Command to run                        |
+| ---------------------------------------------- | ------------------------------------- |
+| New packages added to `package.json`           | `npm install`                         |
+| `prisma/schema.prisma` changed                 | `npm run prisma:migrate`              |
+| Only `.ts` source files changed                | Nothing — `npm run dev` auto-restarts |
+| `.env.example` changed (new variable added)    | Update your `.env` manually           |
+| Database is out of sync / tables look wrong    | `npm run prisma:migrate`              |
