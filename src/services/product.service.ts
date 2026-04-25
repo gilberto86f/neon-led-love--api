@@ -53,13 +53,13 @@ export const productService = {
 
   getBySlug: async (slug: string) => {
     const product = await prisma.product.findUnique({ where: { slug } });
-    if (!product) throw new HttpError(404, `Product "${slug}" not found`);
+    if (!product) throw new HttpError(404, `Product not found "${slug}"`);
     return product;
   },
 
   getById: async (id: number) => {
     const product = await prisma.product.findUnique({ where: { id } });
-    if (!product) throw new HttpError(404, `Product ${id} not found`);
+    if (!product) throw new HttpError(404, `Product not found ${id}`);
     return product;
   },
 
