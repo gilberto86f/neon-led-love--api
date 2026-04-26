@@ -210,7 +210,7 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 
 | Method | Path              | Body (JSON)                | What it does            |
 | ------ | ----------------- | -------------------------- | ----------------------- |
-| GET    | `/products`       | —                          | List all products       |
+| GET    | `/products`       | —                          | List products (paginated) |
 | GET    | `/products/:slug` | —                          | Get one product by slug |
 | POST   | `/products`       | [Product](#product-fields) | Create a new product    |
 | PUT    | `/products/:id`   | [Product](#product-fields) | Replace a product       |
@@ -218,15 +218,39 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 
 **Categories**
 
-| Method | Path                 | Body (JSON)                    | What it does              |
-| ------ | -------------------- | ------------------------------ | ------------------------- |
-| GET    | `/categories`        | —                              | List all categories       |
-| GET    | `/categories/:slug`  | —                              | Get one category by slug  |
-| POST   | `/categories`        | [Category](#category-fields)   | Create a new category     |
-| PUT    | `/categories/:id`    | [Category](#category-fields)   | Replace a category        |
-| DELETE | `/categories/:id`    | —                              | Delete a category         |
+| Method | Path                | Body (JSON)                  | What it does             |
+| ------ | ------------------- | ---------------------------- | ------------------------ |
+| GET    | `/categories`       | —                            | List categories (paginated) |
+| GET    | `/categories/:slug` | —                            | Get one category by slug |
+| POST   | `/categories`       | [Category](#category-fields) | Create a new category    |
+| PUT    | `/categories/:id`   | [Category](#category-fields) | Replace a category       |
+| DELETE | `/categories/:id`   | —                            | Delete a category        |
 
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
+
+### Pagination
+
+Both list endpoints (`GET /products` and `GET /categories`) accept query parameters:
+
+| Parameter | Type   | Default | Max | Description              |
+| --------- | ------ | ------- | --- | ------------------------ |
+| `page`    | number | `1`     | —   | Page number (1-based).   |
+| `perPage` | number | `20`    | 100 | Items per page.          |
+
+Example: `GET /api/products?page=2&perPage=10`
+
+The response includes `total`, `page`, and `perPage` alongside `results`:
+
+```json
+{
+  "success": 1,
+  "status": 200,
+  "results": [ ... ],
+  "total": 45,
+  "page": 2,
+  "perPage": 10
+}
+```
 
 ### Product fields
 
@@ -254,27 +278,27 @@ The server rejects a create/update request with `400` if any required field is m
 
 ```ts
 interface Category {
-  name: string;         // required
-  images: string[];     // required — array of image URLs
-  slug: string;         // required — unique, URL-friendly identifier
-  description: string;  // required
-  tags: string[];       // required — array of tag strings
-  isActive: boolean;    // required
-  notes: string;        // required — internal notes
+  name: string; // required
+  images: string[]; // required — array of image URLs
+  slug: string; // required — unique, URL-friendly identifier
+  description: string; // required
+  tags: string[]; // required — array of tag strings
+  isActive: boolean; // required
+  notes: string; // required — internal notes
   productIds?: number[]; // optional — IDs of linked products
 }
 ```
 
-| Field         | Type      | Required | Notes                                                  |
-| ------------- | --------- | -------- | ------------------------------------------------------ |
-| `name`        | string    | yes      | Category display name.                                 |
-| `images`      | string[]  | yes      | Array of image URLs. Can be empty (`[]`).              |
-| `slug`        | string    | yes      | Unique. Used for public URLs.                          |
-| `description` | string    | yes      | Free-form description.                                 |
-| `tags`        | string[]  | yes      | Array of tag strings. Can be empty (`[]`).             |
-| `isActive`    | boolean   | yes      | Whether the category is visible/active.                |
-| `notes`       | string    | yes      | Internal notes (not shown publicly).                   |
-| `productIds`  | number[]  | no       | IDs of products to link to this category. Sending this on `PUT` **replaces** the full list. |
+| Field         | Type     | Required | Notes                                                                                       |
+| ------------- | -------- | -------- | ------------------------------------------------------------------------------------------- |
+| `name`        | string   | yes      | Category display name.                                                                      |
+| `images`      | string[] | yes      | Array of image URLs. Can be empty (`[]`).                                                   |
+| `slug`        | string   | yes      | Unique. Used for public URLs.                                                               |
+| `description` | string   | yes      | Free-form description.                                                                      |
+| `tags`        | string[] | yes      | Array of tag strings. Can be empty (`[]`).                                                  |
+| `isActive`    | boolean  | yes      | Whether the category is visible/active.                                                     |
+| `notes`       | string   | yes      | Internal notes (not shown publicly).                                                        |
+| `productIds`  | number[] | no       | IDs of products to link to this category. Sending this on `PUT` **replaces** the full list. |
 
 Products and categories have a many-to-many relationship — a product can belong to multiple categories.
 
@@ -583,6 +607,7 @@ npm run prisma:migrate
 ```
 
 This will:
+
 1. Detect what changed between the last applied migration and the current schema.
 2. Generate a new SQL migration file.
 3. Apply it to your PostgreSQL database.
@@ -602,10 +627,11 @@ npm run dev
 
 ### Summary checklist
 
-| Situation                                      | Command to run                        |
-| ---------------------------------------------- | ------------------------------------- |
-| New packages added to `package.json`           | `npm install`                         |
-| `prisma/schema.prisma` changed                 | `npm run prisma:migrate`              |
-| Only `.ts` source files changed                | Nothing — `npm run dev` auto-restarts |
-| `.env.example` changed (new variable added)    | Update your `.env` manually           |
-| Database is out of sync / tables look wrong    | `npm run prisma:migrate`              |
+| Situation                                   | Command to run                        |
+| ------------------------------------------- | ------------------------------------- |
+| New packages added to `package.json`        | `npm install`                         |
+| `prisma/schema.prisma` changed              | `npm run prisma:migrate`              |
+| Only `.ts` source files changed             | Nothing — `npm run dev` auto-restarts |
+| `.env.example` changed (new variable added) | Update your `.env` manually           |
+| Database is out of sync / tables look wrong | `npm run prisma:migrate`              |
+| See what's in your database                 | `npm run prisma:studio`               |

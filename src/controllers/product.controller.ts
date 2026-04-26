@@ -11,11 +11,17 @@ const parseId = (raw: string | string[]): number => {
   return id;
 };
 
+const parsePagination = (query: Request['query']) => ({
+  page: Math.max(1, parseInt(query.page as string) || 1),
+  perPage: Math.min(100, Math.max(1, parseInt(query.perPage as string) || 20)),
+});
+
 export const productController = {
-  list: async (_req: Request, res: Response, next: NextFunction) => {
+  list: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const products = await productService.list();
-      res.status(200).json(okList(products));
+      const { page, perPage } = parsePagination(req.query);
+      const { results, total } = await productService.list({ page, perPage });
+      res.status(200).json(okList(results, { total, page, perPage }));
     } catch (err) {
       next(err);
     }

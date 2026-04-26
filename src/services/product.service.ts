@@ -49,7 +49,14 @@ const normalize = (input: ProductInput) => ({
 });
 
 export const productService = {
-  list: () => prisma.product.findMany({ orderBy: { id: "asc" } }),
+  list: async ({ page, perPage }: { page: number; perPage: number }) => {
+    const skip = (page - 1) * perPage;
+    const [results, total] = await prisma.$transaction([
+      prisma.product.findMany({ orderBy: { id: "asc" }, skip, take: perPage }),
+      prisma.product.count(),
+    ]);
+    return { results, total };
+  },
 
   getBySlug: async (slug: string) => {
     const product = await prisma.product.findUnique({ where: { slug } });

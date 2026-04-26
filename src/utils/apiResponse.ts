@@ -5,6 +5,8 @@ export type ApiNeonResponse<R = unknown> = {
   results?: R[];
   data?: R;
   total?: number;
+  page?: number;
+  perPage?: number;
   previous?: string;
   next?: string;
 };
@@ -17,13 +19,14 @@ export const ok = <R>(data: R, status = 200): ApiNeonResponse<R> => ({
 
 export const okList = <R>(
   results: R[],
-  total?: number,
-  status = 200,
+  opts: { total?: number; page?: number; perPage?: number; status?: number } = {},
 ): ApiNeonResponse<R> => ({
   success: 1,
-  status,
+  status: opts.status ?? 200,
   results,
-  total: total ?? results.length,
+  total: opts.total ?? results.length,
+  page: opts.page,
+  perPage: opts.perPage,
 });
 
 export const fail = (error: any, status = 400): ApiNeonResponse => ({

@@ -77,12 +77,13 @@ const normalize = (input: CategoryInput) => ({
 });
 
 export const categoryService = {
-  getCategories: async () => {
-    const categories = await prisma.category.findMany({
-      orderBy: { id: "asc" },
-      ...withProducts,
-    });
-    return categories.map(toResponse);
+  getCategories: async ({ page, perPage }: { page: number; perPage: number }) => {
+    const skip = (page - 1) * perPage;
+    const [categories, total] = await prisma.$transaction([
+      prisma.category.findMany({ orderBy: { id: "asc" }, skip, take: perPage, ...withProducts }),
+      prisma.category.count(),
+    ]);
+    return { results: categories.map(toResponse), total };
   },
 
   getCategoryById: async (id: number) => {
