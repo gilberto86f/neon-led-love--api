@@ -204,15 +204,27 @@ If you get this, the server is working.
 
 ## 7. Trying the API
 
-The API base URL is `http://localhost:3000/api`. All product endpoints live under `/products`.
+The API base URL is `http://localhost:3000/api`. All product endpoints live under `/products` and all category endpoints under `/categories`.
 
-| Method | Path            | Body (JSON)                | What it does          |
-| ------ | --------------- | -------------------------- | --------------------- |
-| GET    | `/products`     | —                          | List all products     |
+**Products**
+
+| Method | Path              | Body (JSON)                | What it does            |
+| ------ | ----------------- | -------------------------- | ----------------------- |
+| GET    | `/products`       | —                          | List all products       |
 | GET    | `/products/:slug` | —                          | Get one product by slug |
-| POST   | `/products`     | [Product](#product-fields) | Create a new product  |
-| PUT    | `/products/:id` | [Product](#product-fields) | Replace a product     |
-| DELETE | `/products/:id` | —                          | Delete a product      |
+| POST   | `/products`       | [Product](#product-fields) | Create a new product    |
+| PUT    | `/products/:id`   | [Product](#product-fields) | Replace a product       |
+| DELETE | `/products/:id`   | —                          | Delete a product        |
+
+**Categories**
+
+| Method | Path                 | Body (JSON)                    | What it does              |
+| ------ | -------------------- | ------------------------------ | ------------------------- |
+| GET    | `/categories`        | —                              | List all categories       |
+| GET    | `/categories/:slug`  | —                              | Get one category by slug  |
+| POST   | `/categories`        | [Category](#category-fields)   | Create a new category     |
+| PUT    | `/categories/:id`    | [Category](#category-fields)   | Replace a category        |
+| DELETE | `/categories/:id`    | —                              | Delete a category         |
 
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 
@@ -237,6 +249,34 @@ interface Product {
 | `discount`     | number | no       | Integer discount value (e.g. `10` for 10%).         |
 
 The server rejects a create/update request with `400` if any required field is missing, empty, or whitespace. Strings are trimmed before saving.
+
+### Category fields
+
+```ts
+interface Category {
+  name: string;         // required
+  images: string[];     // required — array of image URLs
+  slug: string;         // required — unique, URL-friendly identifier
+  description: string;  // required
+  tags: string[];       // required — array of tag strings
+  isActive: boolean;    // required
+  notes: string;        // required — internal notes
+  productIds?: number[]; // optional — IDs of linked products
+}
+```
+
+| Field         | Type      | Required | Notes                                                  |
+| ------------- | --------- | -------- | ------------------------------------------------------ |
+| `name`        | string    | yes      | Category display name.                                 |
+| `images`      | string[]  | yes      | Array of image URLs. Can be empty (`[]`).              |
+| `slug`        | string    | yes      | Unique. Used for public URLs.                          |
+| `description` | string    | yes      | Free-form description.                                 |
+| `tags`        | string[]  | yes      | Array of tag strings. Can be empty (`[]`).             |
+| `isActive`    | boolean   | yes      | Whether the category is visible/active.                |
+| `notes`       | string    | yes      | Internal notes (not shown publicly).                   |
+| `productIds`  | number[]  | no       | IDs of products to link to this category. Sending this on `PUT` **replaces** the full list. |
+
+Products and categories have a many-to-many relationship — a product can belong to multiple categories.
 
 ### 7.1. curl examples (works in PowerShell)
 
