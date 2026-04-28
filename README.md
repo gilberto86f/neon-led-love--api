@@ -14,11 +14,12 @@ Backend API for an e-commerce site that sells LED neon signs. This document is w
 6. [Running the server](#6-running-the-server)
 7. [Trying the API](#7-trying-the-api)
 8. [The response format (`ApiNeonResponse`)](#8-the-response-format-apineonresponse)
-9. [Project structure explained](#9-project-structure-explained)
-10. [Common errors and how to fix them](#10-common-errors-and-how-to-fix-them)
-11. [Useful npm scripts](#11-useful-npm-scripts)
-12. [Connecting from your Angular frontend](#12-connecting-from-your-angular-frontend)
-13. [After pulling changes](#13-after-pulling-changes)
+9. [API documentation (Swagger)](#9-api-documentation-swagger)
+10. [Project structure explained](#10-project-structure-explained)
+11. [Common errors and how to fix them](#11-common-errors-and-how-to-fix-them)
+12. [Useful npm scripts](#12-useful-npm-scripts)
+13. [Connecting from your Angular frontend](#13-connecting-from-your-angular-frontend)
+14. [After pulling changes](#14-after-pulling-changes)
 
 ---
 
@@ -428,7 +429,49 @@ In your Angular service, you can check `response.success === 1` to know whether 
 
 ---
 
-## 9. Project structure explained
+## 9. API documentation (Swagger)
+
+### What is Swagger?
+
+Swagger (based on the **OpenAPI** standard) is an interactive web page that documents every API endpoint. Instead of guessing what fields to send or reading source code, you can:
+
+- See every endpoint, its URL, method, and description in one place.
+- Read exactly which fields are required, what type they must be, and what the response looks like.
+- Click **"Try it out"** to send real HTTP requests directly from the browser — no Postman or curl needed.
+
+### How to access the docs
+
+Start the server (`npm run dev`), then open:
+
+```
+http://localhost:3000/api/docs
+```
+
+The interactive Swagger UI loads immediately. No login required.
+
+If you need the raw OpenAPI spec as JSON (e.g. to import into Postman):
+
+```
+http://localhost:3000/api/docs.json
+```
+
+### How to use the API explorer
+
+1. Open `http://localhost:3000/api/docs` in your browser.
+2. Click any endpoint to expand it (e.g. **POST /api/products**).
+3. Click **"Try it out"** (top-right of the expanded panel).
+4. Fill in the request body or parameters using the editable form.
+5. Click **"Execute"** — the page shows the exact `curl` command it ran, the response status, and the response body.
+
+> **Tip:** Use the "Try it out" feature as a quick way to seed test data or verify a fix without writing any code.
+
+### Where the documentation lives
+
+All endpoint documentation is defined in **[src/swagger.ts](src/swagger.ts)**. If you add a new endpoint or change a field, update that file to keep the docs in sync.
+
+---
+
+## 10. Project structure explained
 
 ```
 neon-led-love--api/
@@ -475,7 +518,7 @@ This separation (routes → controllers → services) means business logic is **
 
 ---
 
-## 10. Common errors and how to fix them
+## 11. Common errors and how to fix them
 
 ### `P1001: Can't reach database server at localhost:5432`
 
@@ -518,7 +561,7 @@ Newer npm versions strip `--`. The script in [package.json](package.json) alread
 
 ---
 
-## 11. Useful npm scripts
+## 12. Useful npm scripts
 
 | Script                    | What it does                                                                     |
 | ------------------------- | -------------------------------------------------------------------------------- |
@@ -538,7 +581,7 @@ Newer npm versions strip `--`. The script in [package.json](package.json) alread
 
 ---
 
-## 12. Connecting from your Angular frontend
+## 13. Connecting from your Angular frontend
 
 In your Angular app, create a service that talks to this API:
 
@@ -586,7 +629,7 @@ That's it. Build a component, inject `ProductService`, render `response.results`
 
 ---
 
-## 13. After pulling changes
+## 14. After pulling changes
 
 Whenever you pull new commits from the repository, follow these steps to bring your local environment up to date.
 

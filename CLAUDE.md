@@ -72,6 +72,13 @@ If you add new endpoints, follow the same split (public-facing reads by slug, ad
 
 This project is maintained by a frontend developer without backend experience. The README is their primary guide for understanding and operating the API, so keeping it accurate and up to date is critical. After any important change — new endpoint, schema change, new field, changed behavior, updated scripts — update [README.md](README.md) to reflect it. Assume the reader is not familiar with backend concepts and may need context, not just raw facts.
 
+**No API change is complete until the docs are updated.** This rule covers:
+
+- [src/swagger.ts](src/swagger.ts) — update for any new endpoint, renamed/added/removed param, changed request body, changed response shape, or validation rule change.
+- [README.md](README.md) — update when the change is user-facing enough that someone setting up or consuming the API needs to know (new resource, behavior change, new query param, etc.).
+
+Both docs must be updated in the same commit/change as the code. Never leave them out of sync.
+
 ## Migrations
 
 Each schema change must produce a migration in `prisma/migrations/` — never edit the database manually. Column-type changes can drop existing data; review the generated SQL before applying it on anything other than a throwaway dev DB (see [prisma/migrations/20260425183908_discount_int/migration.sql](prisma/migrations/20260425183908_discount_int/migration.sql) for a real example of a destructive type change in this repo's history).
