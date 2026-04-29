@@ -73,13 +73,24 @@ export const categoryService = {
     page,
     perPage,
     productId,
+    search,
   }: {
     page: number;
     perPage: number;
     productId?: number;
+    search?: string;
   }) => {
     const skip = (page - 1) * perPage;
-    const where = productId !== undefined ? { products: { some: { id: productId } } } : undefined;
+    const where: Prisma.CategoryWhereInput = {};
+    if (productId !== undefined) {
+      where.products = { some: { id: productId } };
+    }
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+      ];
+    }
     const [categories, total] = await prisma.$transaction([
       prisma.category.findMany({ where, orderBy: { id: "asc" }, skip, take: perPage, ...withProducts }),
       prisma.category.count({ where }),

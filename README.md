@@ -268,17 +268,21 @@ Both list endpoints (`GET /products` and `GET /categories`) accept query paramet
 
 Example: `GET /api/products?page=2&perPage=10`
 
-### Filtering categories by product
+### Filtering categories
 
-`GET /categories` accepts an additional query parameter:
+`GET /categories` accepts additional filter query parameters that can be combined freely:
 
-| Parameter   | Type   | Description                                               |
-| ----------- | ------ | --------------------------------------------------------- |
-| `productId` | number | Return only categories linked to the product with this ID |
+| Parameter   | Type   | Description                                                                |
+| ----------- | ------ | -------------------------------------------------------------------------- |
+| `productId` | number | Return only categories linked to the product with this ID                  |
+| `search`    | string | Return only categories whose name or description contains this string (case-insensitive) |
 
-Example: `GET /api/categories?productId=3`
+Examples:
+- `GET /api/categories?productId=3` — categories linked to product 3
+- `GET /api/categories?search=outdoor` — categories whose name or description contains "outdoor"
+- `GET /api/categories?productId=3&search=outdoor` — both filters applied at once
 
-Returns the same paginated shape as the regular list, but only includes categories that are linked to product `3`. Returns an empty list (not a 404) if the product has no categories. Returns `400` if `productId` is not a positive integer.
+Filters return an empty list (not a 404) when no categories match. `productId` returns `400` if it is not a positive integer. Blank `search` values are ignored.
 
 The response includes `total`, `page`, and `perPage` alongside `results`:
 

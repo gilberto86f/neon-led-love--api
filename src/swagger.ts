@@ -481,6 +481,12 @@ export const swaggerSpec = {
             description: "Filter to categories linked to this product ID.",
             schema: { type: "integer", minimum: 1 },
           },
+          {
+            name: "search",
+            in: "query",
+            description: "Filter to categories whose name or description contains this string (case-insensitive).",
+            schema: { type: "string" },
+          },
         ],
         responses: {
           200: {

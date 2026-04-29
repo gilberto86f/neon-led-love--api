@@ -23,7 +23,8 @@ export const categoryController = {
         productId = Number(req.query.productId);
         if (!Number.isInteger(productId) || productId <= 0) throw new HttpError(400, "Invalid productId");
       }
-      const { results, total } = await categoryService.getCategories({ page, perPage, productId });
+      const search = req.query.search ? String(req.query.search).trim() : undefined;
+      const { results, total } = await categoryService.getCategories({ page, perPage, productId, search });
       res.status(200).json(okList(results, { total, page, perPage }));
     } catch (err) {
       next(err);
