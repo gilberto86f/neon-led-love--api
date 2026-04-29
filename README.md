@@ -227,6 +227,34 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 | PUT    | `/categories/:id`   | [Category](#category-fields) | Replace a category       |
 | DELETE | `/categories/:id`   | —                            | Delete a category        |
 
+**Product-Category relations**
+
+These endpoints manage which categories a product belongs to. Both IDs must refer to existing records.
+
+| Method | Path                                       | Body | What it does                    |
+| ------ | ------------------------------------------ | ---- | ------------------------------- |
+| POST   | `/products/:productId/categories/:categoryId` | —    | Link a category to a product    |
+| DELETE | `/products/:productId/categories/:categoryId` | —    | Unlink a category from a product |
+
+The relationship is **bidirectional and automatic**: linking a product to a category also makes that product appear in the category's `productIds` list, and vice versa. You do not need to call a separate endpoint on the category side.
+
+Both operations are safe to repeat — linking an already-linked pair or unlinking a pair that was never linked causes no error.
+
+The response returns the updated product with a `categoryIds` field showing its current linked categories:
+
+```json
+{
+  "success": 1,
+  "status": 200,
+  "data": {
+    "id": 1,
+    "name": "Neon Heart",
+    "slug": "neon-heart",
+    "categoryIds": [2, 5]
+  }
+}
+```
+
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 
 ### Pagination
@@ -305,7 +333,7 @@ The **response** includes additional read-only fields populated by the system:
 | `id`         | number   | Auto-generated.                                                |
 | `images`     | string[] | Managed by a dedicated image service (not yet implemented).    |
 | `tagIds`     | number[] | IDs of linked tags. Managed by Tag service (not yet implemented). |
-| `productIds` | number[] | IDs of linked products. Managed by a relation service (not yet implemented). |
+| `productIds` | number[] | IDs of linked products. Managed via `POST/DELETE /products/:productId/categories/:categoryId`. |
 | `createdAt`  | string   | ISO datetime.                                                  |
 | `updatedAt`  | string   | ISO datetime.                                                  |
 

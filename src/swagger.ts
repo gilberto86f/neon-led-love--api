@@ -39,6 +39,7 @@ export const swaggerSpec = {
     { name: "Health", description: "Server health check" },
     { name: "Products", description: "LED neon sign products" },
     { name: "Categories", description: "Product categories" },
+    { name: "Product-Category", description: "Link and unlink products from categories" },
   ],
   components: {
     parameters: {
@@ -69,6 +70,20 @@ export const swaggerSpec = {
         required: true,
         description: "URL-friendly category identifier (e.g. `outdoor-signs`)",
         schema: { type: "string" },
+      },
+      relationProductId: {
+        name: "productId",
+        in: "path",
+        required: true,
+        description: "Numeric product ID",
+        schema: { type: "integer", minimum: 1 },
+      },
+      relationCategoryId: {
+        name: "categoryId",
+        in: "path",
+        required: true,
+        description: "Numeric category ID",
+        schema: { type: "integer", minimum: 1 },
       },
     },
     schemas: {
@@ -165,6 +180,26 @@ export const swaggerSpec = {
           notes: { type: "string", example: "Seasonal promotion applies." },
         },
       },
+      ProductWithCategories: {
+        type: "object",
+        description: "A product including the IDs of its linked categories.",
+        properties: {
+          id: { type: "integer", example: 1 },
+          name: { type: "string", example: "Neon Heart" },
+          description: { type: "string", example: "Pink LED neon heart sign" },
+          slug: { type: "string", example: "neon-heart" },
+          discountType: { type: "string", nullable: true, example: "percentage" },
+          discount: { type: "integer", nullable: true, example: 10 },
+          categoryIds: {
+            type: "array",
+            items: { type: "integer" },
+            example: [1, 2],
+            description: "IDs of categories this product is currently linked to.",
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
       // ── Response envelopes ────────────────────────────────────────────────
       ErrorResponse: {
         type: "object",
@@ -216,6 +251,14 @@ export const swaggerSpec = {
           success: { type: "integer", enum: [1], example: 1 },
           status: { type: "integer", example: 200 },
           data: { $ref: "#/components/schemas/Category" },
+        },
+      },
+      ProductWithCategoriesResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/ProductWithCategories" },
         },
       },
       CategoryListResponse: {
@@ -367,6 +410,57 @@ export const swaggerSpec = {
               },
             },
           },
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Product-Category relations ──────────────────────────────────────────
+    "/api/products/{productId}/categories/{categoryId}": {
+      post: {
+        tags: ["Product-Category"],
+        summary: "Add category to product",
+        description:
+          "Links a category to a product. Both must exist or a 404 is returned.\n\n" +
+          "The relationship is automatically bidirectional: the product appears in the " +
+          "category's `productIds` and the category appears in the product's `categoryIds`.\n\n" +
+          "Linking an already-linked pair is a no-op (safe to call multiple times).",
+        parameters: [
+          { $ref: "#/components/parameters/relationProductId" },
+          { $ref: "#/components/parameters/relationCategoryId" },
+        ],
+        responses: {
+          200: {
+            description: "Category linked. Returns the updated product with its current categoryIds.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductWithCategoriesResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      delete: {
+        tags: ["Product-Category"],
+        summary: "Remove category from product",
+        description:
+          "Unlinks a category from a product. Both must exist or a 404 is returned.\n\n" +
+          "If the pair was not linked, the operation is a no-op (no error).",
+        parameters: [
+          { $ref: "#/components/parameters/relationProductId" },
+          { $ref: "#/components/parameters/relationCategoryId" },
+        ],
+        responses: {
+          200: {
+            description: "Category unlinked. Returns the updated product with its current categoryIds.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductWithCategoriesResponse" },
+              },
+            },
+          },
+          400: errorResponse,
           404: errorResponse,
         },
       },
