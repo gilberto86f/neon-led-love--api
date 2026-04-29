@@ -130,10 +130,11 @@ export const swaggerSpec = {
             type: "string",
             example: "Signs designed for outdoor use.",
           },
-          tags: {
+          tagIds: {
             type: "array",
-            items: { type: "string" },
-            example: ["outdoor", "waterproof"],
+            items: { type: "integer" },
+            example: [1, 2],
+            description: "IDs of tags linked to this category. Managed by the Tag service (not yet implemented).",
           },
           isActive: { type: "boolean", example: true },
           notes: { type: "string", example: "Seasonal promotion applies." },
@@ -141,51 +142,27 @@ export const swaggerSpec = {
             type: "array",
             items: { type: "integer" },
             example: [1, 2, 3],
-            description: "IDs of products linked to this category.",
+            description: "IDs of products linked to this category. Managed by the Product-Category relation service (not yet implemented).",
           },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
       },
-      CategoryInput: {
+      CategoryPayload: {
         type: "object",
-        required: [
-          "name",
-          "images",
-          "slug",
-          "description",
-          "tags",
-          "isActive",
-          "notes",
-        ],
+        required: ["name", "slug", "description", "isActive", "notes"],
+        description:
+          "Fields accepted when creating or updating a category. " +
+          "images, tagIds, and productIds are managed by dedicated services and cannot be set here.",
         properties: {
           name: { type: "string", example: "Outdoor Signs" },
-          images: {
-            type: "array",
-            items: { type: "string" },
-            example: ["https://cdn.example.com/outdoor.jpg"],
-            description: "Array of image URLs. Can be empty.",
-          },
           slug: { type: "string", example: "outdoor-signs" },
           description: {
             type: "string",
             example: "Signs designed for outdoor use.",
           },
-          tags: {
-            type: "array",
-            items: { type: "string" },
-            example: ["outdoor", "waterproof"],
-            description: "Array of tag strings. Can be empty.",
-          },
           isActive: { type: "boolean", example: true },
           notes: { type: "string", example: "Seasonal promotion applies." },
-          productIds: {
-            type: "array",
-            items: { type: "integer", minimum: 1 },
-            example: [1, 2],
-            description:
-              "IDs of products to link. On PUT this replaces the full list — omitting it clears all links.",
-          },
         },
       },
       // ── Response envelopes ────────────────────────────────────────────────
@@ -425,7 +402,7 @@ export const swaggerSpec = {
           required: true,
           content: {
             "application/json": {
-              schema: { $ref: "#/components/schemas/CategoryInput" },
+              schema: { $ref: "#/components/schemas/CategoryPayload" },
             },
           },
         },
@@ -473,7 +450,7 @@ export const swaggerSpec = {
           required: true,
           content: {
             "application/json": {
-              schema: { $ref: "#/components/schemas/CategoryInput" },
+              schema: { $ref: "#/components/schemas/CategoryPayload" },
             },
           },
         },

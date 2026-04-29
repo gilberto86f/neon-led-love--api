@@ -277,31 +277,37 @@ The server rejects a create/update request with `400` if any required field is m
 
 ### Category fields
 
+The **create and update payload** only accepts core fields. `images`, `tagIds`, and `productIds` are managed by dedicated services (not yet implemented).
+
 ```ts
-interface Category {
-  name: string; // required
-  images: string[]; // required — array of image URLs
-  slug: string; // required — unique, URL-friendly identifier
+// What you send for POST /categories and PUT /categories/:id
+type CategoryPayload = {
+  name: string;        // required
+  slug: string;        // required — unique, URL-friendly identifier
   description: string; // required
-  tags: string[]; // required — array of tag strings
-  isActive: boolean; // required
-  notes: string; // required — internal notes
-  productIds?: number[]; // optional — IDs of linked products
-}
+  isActive: boolean;   // required
+  notes: string;       // required — internal notes
+};
 ```
 
-| Field         | Type     | Required | Notes                                                                                       |
-| ------------- | -------- | -------- | ------------------------------------------------------------------------------------------- |
-| `name`        | string   | yes      | Category display name.                                                                      |
-| `images`      | string[] | yes      | Array of image URLs. Can be empty (`[]`).                                                   |
-| `slug`        | string   | yes      | Unique. Used for public URLs.                                                               |
-| `description` | string   | yes      | Free-form description.                                                                      |
-| `tags`        | string[] | yes      | Array of tag strings. Can be empty (`[]`).                                                  |
-| `isActive`    | boolean  | yes      | Whether the category is visible/active.                                                     |
-| `notes`       | string   | yes      | Internal notes (not shown publicly).                                                        |
-| `productIds`  | number[] | no       | IDs of products to link to this category. Sending this on `PUT` **replaces** the full list. |
+| Field         | Type    | Required | Notes                                   |
+| ------------- | ------- | -------- | --------------------------------------- |
+| `name`        | string  | yes      | Category display name.                  |
+| `slug`        | string  | yes      | Unique. Used for public URLs.           |
+| `description` | string  | yes      | Free-form description.                  |
+| `isActive`    | boolean | yes      | Whether the category is visible/active. |
+| `notes`       | string  | yes      | Internal notes (not shown publicly).    |
 
-Products and categories have a many-to-many relationship — a product can belong to multiple categories.
+The **response** includes additional read-only fields populated by the system:
+
+| Field        | Type     | Notes                                                          |
+| ------------ | -------- | -------------------------------------------------------------- |
+| `id`         | number   | Auto-generated.                                                |
+| `images`     | string[] | Managed by a dedicated image service (not yet implemented).    |
+| `tagIds`     | number[] | IDs of linked tags. Managed by Tag service (not yet implemented). |
+| `productIds` | number[] | IDs of linked products. Managed by a relation service (not yet implemented). |
+| `createdAt`  | string   | ISO datetime.                                                  |
+| `updatedAt`  | string   | ISO datetime.                                                  |
 
 ### 7.1. curl examples (works in PowerShell)
 

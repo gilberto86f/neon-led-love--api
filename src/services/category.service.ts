@@ -2,16 +2,27 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { HttpError } from "../utils/HttpError";
 
-export interface CategoryInput {
+// Placeholder until Tag model is implemented
+interface Tag {
+  id: number;
+}
+
+export interface Category {
+  id: number;
   name: string;
   images: string[];
   slug: string;
   description: string;
-  tags: string[];
+  tagIds: Tag["id"][];
   isActive: boolean;
   notes: string;
-  productIds?: number[];
+  productIds: number[];
 }
+
+export type CategoryPayload = Pick<
+  Category,
+  "id" | "name" | "slug" | "description" | "isActive" | "notes"
+>;
 
 const withProducts = {
   include: { products: { select: { id: true } } },
@@ -21,57 +32,38 @@ type CategoryWithProducts = Prisma.CategoryGetPayload<typeof withProducts>;
 
 const toResponse = (cat: CategoryWithProducts) => {
   const { products, ...rest } = cat;
-  return { ...rest, productIds: products.map((p) => p.id) };
+  return {
+    ...rest,
+    tagIds: [] as Tag["id"][], // populated once Tag relation is implemented
+    productIds: products.map((p) => p.id),
+  };
 };
 
-const requireString = (input: Partial<CategoryInput>, field: keyof CategoryInput) => {
+const requireString = (input: Partial<CategoryPayload>, field: keyof CategoryPayload) => {
   const value = input[field];
   if (!value || typeof value !== "string" || !value.trim()) {
     throw new HttpError(400, `Field is required: "${field}"`);
   }
 };
 
-const requireStringArray = (input: Partial<CategoryInput>, field: keyof CategoryInput) => {
-  const value = input[field];
-  if (!Array.isArray(value) || (value as unknown[]).some((v) => typeof v !== "string")) {
-    throw new HttpError(400, `Field must be an array of strings: "${field}"`);
-  }
-};
-
-const requireBoolean = (input: Partial<CategoryInput>, field: keyof CategoryInput) => {
+const requireBoolean = (input: Partial<CategoryPayload>, field: keyof CategoryPayload) => {
   if (typeof input[field] !== "boolean") {
     throw new HttpError(400, `Field must be a boolean: "${field}"`);
   }
 };
 
-const optionalNumberArray = (input: Partial<CategoryInput>, field: keyof CategoryInput) => {
-  const value = input[field];
-  if (value === undefined || value === null) return;
-  if (
-    !Array.isArray(value) ||
-    (value as unknown[]).some((v) => !Number.isInteger(v) || (v as number) <= 0)
-  ) {
-    throw new HttpError(400, `Field must be an array of positive integers: "${field}"`);
-  }
-};
-
-const validate = (input: Partial<CategoryInput>) => {
+const validate = (input: Partial<CategoryPayload>) => {
   requireString(input, "name");
-  requireStringArray(input, "images");
   requireString(input, "slug");
   requireString(input, "description");
-  requireStringArray(input, "tags");
   requireBoolean(input, "isActive");
   requireString(input, "notes");
-  optionalNumberArray(input, "productIds");
 };
 
-const normalize = (input: CategoryInput) => ({
+const normalize = (input: CategoryPayload) => ({
   name: input.name.trim(),
-  images: input.images.map((s) => s.trim()),
   slug: input.slug.trim(),
   description: input.description.trim(),
-  tags: input.tags.map((s) => s.trim()),
   isActive: input.isActive,
   notes: input.notes.trim(),
 });
@@ -98,29 +90,21 @@ export const categoryService = {
     return toResponse(category);
   },
 
-  createCategory: async (input: CategoryInput) => {
+  createCategory: async (input: CategoryPayload) => {
     validate(input);
     const category = await prisma.category.create({
-      data: {
-        ...normalize(input),
-        ...(input.productIds?.length
-          ? { products: { connect: input.productIds.map((id) => ({ id })) } }
-          : {}),
-      },
+      data: { images: [], tags: [], ...normalize(input) },
       ...withProducts,
     });
     return toResponse(category);
   },
 
-  updateCategory: async (id: number, input: CategoryInput) => {
+  updateCategory: async (id: number, input: CategoryPayload) => {
     validate(input);
     await categoryService.getCategoryById(id);
     const category = await prisma.category.update({
       where: { id },
-      data: {
-        ...normalize(input),
-        products: { set: (input.productIds ?? []).map((pid) => ({ id: pid })) },
-      },
+      data: normalize(input),
       ...withProducts,
     });
     return toResponse(category);
