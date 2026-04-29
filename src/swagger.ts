@@ -471,8 +471,17 @@ export const swaggerSpec = {
         tags: ["Categories"],
         summary: "List categories",
         description:
-          "Returns a paginated list of all categories ordered by ID. Each category includes its linked `productIds`.",
-        parameters: paginationParameters,
+          "Returns a paginated list of all categories ordered by ID. Each category includes its linked `productIds`.\n\n" +
+          "Pass `productId` to filter to only categories linked to a specific product.",
+        parameters: [
+          ...paginationParameters,
+          {
+            name: "productId",
+            in: "query",
+            description: "Filter to categories linked to this product ID.",
+            schema: { type: "integer", minimum: 1 },
+          },
+        ],
         responses: {
           200: {
             description: "Paginated category list",

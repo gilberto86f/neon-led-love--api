@@ -268,6 +268,18 @@ Both list endpoints (`GET /products` and `GET /categories`) accept query paramet
 
 Example: `GET /api/products?page=2&perPage=10`
 
+### Filtering categories by product
+
+`GET /categories` accepts an additional query parameter:
+
+| Parameter   | Type   | Description                                               |
+| ----------- | ------ | --------------------------------------------------------- |
+| `productId` | number | Return only categories linked to the product with this ID |
+
+Example: `GET /api/categories?productId=3`
+
+Returns the same paginated shape as the regular list, but only includes categories that are linked to product `3`. Returns an empty list (not a 404) if the product has no categories. Returns `400` if `productId` is not a positive integer.
+
 The response includes `total`, `page`, and `perPage` alongside `results`:
 
 ```json

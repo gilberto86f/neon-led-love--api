@@ -18,7 +18,12 @@ export const categoryController = {
   list: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { page, perPage } = parsePagination(req.query);
-      const { results, total } = await categoryService.getCategories({ page, perPage });
+      let productId: number | undefined;
+      if (req.query.productId !== undefined) {
+        productId = Number(req.query.productId);
+        if (!Number.isInteger(productId) || productId <= 0) throw new HttpError(400, "Invalid productId");
+      }
+      const { results, total } = await categoryService.getCategories({ page, perPage, productId });
       res.status(200).json(okList(results, { total, page, perPage }));
     } catch (err) {
       next(err);

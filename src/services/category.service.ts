@@ -69,11 +69,20 @@ const normalize = (input: CategoryPayload) => ({
 });
 
 export const categoryService = {
-  getCategories: async ({ page, perPage }: { page: number; perPage: number }) => {
+  getCategories: async ({
+    page,
+    perPage,
+    productId,
+  }: {
+    page: number;
+    perPage: number;
+    productId?: number;
+  }) => {
     const skip = (page - 1) * perPage;
+    const where = productId !== undefined ? { products: { some: { id: productId } } } : undefined;
     const [categories, total] = await prisma.$transaction([
-      prisma.category.findMany({ orderBy: { id: "asc" }, skip, take: perPage, ...withProducts }),
-      prisma.category.count(),
+      prisma.category.findMany({ where, orderBy: { id: "asc" }, skip, take: perPage, ...withProducts }),
+      prisma.category.count({ where }),
     ]);
     return { results: categories.map(toResponse), total };
   },
