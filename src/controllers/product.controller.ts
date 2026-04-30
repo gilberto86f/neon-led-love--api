@@ -20,7 +20,13 @@ export const productController = {
   list: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { page, perPage } = parsePagination(req.query);
-      const { results, total } = await productService.list({ page, perPage });
+      const search = req.query.search ? String(req.query.search).trim() : undefined;
+      let categoryId: number | undefined;
+      if (req.query.categoryId !== undefined) {
+        categoryId = Number(req.query.categoryId);
+        if (!Number.isInteger(categoryId) || categoryId <= 0) throw new HttpError(400, "Invalid categoryId");
+      }
+      const { results, total } = await productService.list({ page, perPage, search, categoryId });
       res.status(200).json(okList(results, { total, page, perPage }));
     } catch (err) {
       next(err);

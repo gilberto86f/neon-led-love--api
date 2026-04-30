@@ -268,6 +268,22 @@ Both list endpoints (`GET /products` and `GET /categories`) accept query paramet
 
 Example: `GET /api/products?page=2&perPage=10`
 
+### Filtering products
+
+`GET /products` accepts additional filter query parameters that can be combined freely:
+
+| Parameter    | Type   | Description                                                                 |
+| ------------ | ------ | --------------------------------------------------------------------------- |
+| `search`     | string | Return only products whose name or description contains this string (case-insensitive) |
+| `categoryId` | number | Return only products linked to the category with this ID                    |
+
+Examples:
+- `GET /api/products?search=pikachu` — products whose name or description contains "pikachu"
+- `GET /api/products?categoryId=123` — products in category 123
+- `GET /api/products?search=pikachu&categoryId=123` — both filters applied at once
+
+Filters return an empty list (not a 404) when no products match. `categoryId` returns `400` if it is not a positive integer. Blank `search` values are ignored.
+
 ### Filtering categories
 
 `GET /categories` accepts additional filter query parameters that can be combined freely:

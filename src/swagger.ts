@@ -311,8 +311,24 @@ export const swaggerSpec = {
       get: {
         tags: ["Products"],
         summary: "List products",
-        description: "Returns a paginated list of all products ordered by ID.",
-        parameters: paginationParameters,
+        description:
+          "Returns a paginated list of all products ordered by ID.\n\n" +
+          "Pass `search` to filter by name/description, `categoryId` to filter by category, or both at once.",
+        parameters: [
+          ...paginationParameters,
+          {
+            name: "search",
+            in: "query",
+            description: "Filter to products whose name or description contains this string (case-insensitive).",
+            schema: { type: "string" },
+          },
+          {
+            name: "categoryId",
+            in: "query",
+            description: "Filter to products linked to this category ID.",
+            schema: { type: "integer", minimum: 1 },
+          },
+        ],
         responses: {
           200: {
             description: "Paginated product list",

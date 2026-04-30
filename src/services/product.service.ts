@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../prisma/client";
 import { HttpError } from "../utils/HttpError";
 
@@ -49,11 +50,31 @@ const normalize = (input: ProductInput) => ({
 });
 
 export const productService = {
-  list: async ({ page, perPage }: { page: number; perPage: number }) => {
+  list: async ({
+    page,
+    perPage,
+    search,
+    categoryId,
+  }: {
+    page: number;
+    perPage: number;
+    search?: string;
+    categoryId?: number;
+  }) => {
     const skip = (page - 1) * perPage;
+    const where: Prisma.ProductWhereInput = {};
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: "insensitive" } },
+        { description: { contains: search, mode: "insensitive" } },
+      ];
+    }
+    if (categoryId !== undefined) {
+      where.categories = { some: { id: categoryId } };
+    }
     const [results, total] = await prisma.$transaction([
-      prisma.product.findMany({ orderBy: { id: "asc" }, skip, take: perPage }),
-      prisma.product.count(),
+      prisma.product.findMany({ where, orderBy: { id: "asc" }, skip, take: perPage }),
+      prisma.product.count({ where }),
     ]);
     return { results, total };
   },
