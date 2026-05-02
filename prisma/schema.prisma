@@ -8,15 +8,28 @@ datasource db {
 }
 
 model Product {
-  id           Int        @id @default(autoincrement())
+  id           Int              @id @default(autoincrement())
   name         String
   description  String
-  slug         String     @unique
+  slug         String           @unique
   discountType String?
   discount     Int?
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
   categories   Category[]
+  variants     ProductVariant[]
+}
+
+model ProductVariant {
+  id        Int      @id @default(autoincrement())
+  price     Float
+  width     Float
+  height    Float
+  sizeUnit  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model Category {

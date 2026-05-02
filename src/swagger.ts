@@ -40,6 +40,7 @@ export const swaggerSpec = {
     { name: "Products", description: "LED neon sign products" },
     { name: "Categories", description: "Product categories" },
     { name: "Product-Category", description: "Link and unlink products from categories" },
+    { name: "Variants", description: "Size and price variants of a product" },
   ],
   components: {
     parameters: {
@@ -85,6 +86,20 @@ export const swaggerSpec = {
         description: "Numeric category ID",
         schema: { type: "integer", minimum: 1 },
       },
+      variantProductId: {
+        name: "productId",
+        in: "path",
+        required: true,
+        description: "Numeric product ID",
+        schema: { type: "integer", minimum: 1 },
+      },
+      variantId: {
+        name: "variantId",
+        in: "path",
+        required: true,
+        description: "Numeric variant ID",
+        schema: { type: "integer", minimum: 1 },
+      },
     },
     schemas: {
       // ── Entities ──────────────────────────────────────────────────────────
@@ -101,8 +116,40 @@ export const swaggerSpec = {
             example: "percentage",
           },
           discount: { type: "integer", nullable: true, example: 10 },
+          variants: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ProductVariant" },
+            description:
+              "Size/price variants for this product. Managed via the Variants endpoints.",
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      ProductVariant: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          price: { type: "number", example: 29.99 },
+          width: { type: "number", example: 30 },
+          height: { type: "number", example: 15 },
+          sizeUnit: { type: "string", enum: ["cm", "inch"], example: "cm" },
+          productId: { type: "integer", example: 1 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      ProductVariantInput: {
+        type: "object",
+        required: ["price", "width", "height", "sizeUnit"],
+        description:
+          "Fields accepted when creating or updating a variant. " +
+          "All four are required and must be positive numbers; `sizeUnit` must be `cm` or `inch`.",
+        properties: {
+          price: { type: "number", example: 29.99, description: "Must be > 0." },
+          width: { type: "number", example: 30, description: "Must be > 0." },
+          height: { type: "number", example: 15, description: "Must be > 0." },
+          sizeUnit: { type: "string", enum: ["cm", "inch"], example: "cm" },
         },
       },
       ProductInput: {
@@ -273,6 +320,26 @@ export const swaggerSpec = {
           total: { type: "integer", example: 12 },
           page: { type: "integer", example: 1 },
           perPage: { type: "integer", example: 20 },
+        },
+      },
+      ProductVariantResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/ProductVariant" },
+        },
+      },
+      ProductVariantListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ProductVariant" },
+          },
+          total: { type: "integer", example: 3 },
         },
       },
     },
@@ -473,6 +540,107 @@ export const swaggerSpec = {
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/ProductWithCategoriesResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Product Variants ────────────────────────────────────────────────────
+    "/api/products/{productId}/variants": {
+      get: {
+        tags: ["Variants"],
+        summary: "List variants",
+        description: "Returns all variants for the given product, ordered by ID. Returns 404 if the product does not exist.",
+        parameters: [{ $ref: "#/components/parameters/variantProductId" }],
+        responses: {
+          200: {
+            description: "Variant list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductVariantListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      post: {
+        tags: ["Variants"],
+        summary: "Create variant",
+        description:
+          "Creates a new variant on the given product. All four fields are required and must be positive numbers; `sizeUnit` must be `cm` or `inch`.",
+        parameters: [{ $ref: "#/components/parameters/variantProductId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ProductVariantInput" },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Variant created",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductVariantResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    "/api/products/{productId}/variants/{variantId}": {
+      put: {
+        tags: ["Variants"],
+        summary: "Update variant",
+        description:
+          "Replaces all fields of an existing variant. Returns 404 if the variant does not exist or does not belong to the given product.",
+        parameters: [
+          { $ref: "#/components/parameters/variantProductId" },
+          { $ref: "#/components/parameters/variantId" },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ProductVariantInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Variant updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductVariantResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      delete: {
+        tags: ["Variants"],
+        summary: "Delete variant",
+        description: "Deletes a variant. Returns 404 if the variant does not exist or does not belong to the given product.",
+        parameters: [
+          { $ref: "#/components/parameters/variantProductId" },
+          { $ref: "#/components/parameters/variantId" },
+        ],
+        responses: {
+          200: {
+            description: "Variant deleted",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/DeletedResponse" },
               },
             },
           },

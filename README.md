@@ -236,6 +236,19 @@ These endpoints manage which categories a product belongs to. Both IDs must refe
 | POST   | `/products/:productId/categories/:categoryId` | —    | Link a category to a product    |
 | DELETE | `/products/:productId/categories/:categoryId` | —    | Unlink a category from a product |
 
+**Product variants**
+
+A variant is one specific size/price for a product. A product can have many variants (e.g. small, medium, large). Variants are managed via their own endpoints — you do **not** edit them by replacing the product.
+
+| Method | Path                                            | Body                                  | What it does                                   |
+| ------ | ----------------------------------------------- | ------------------------------------- | ---------------------------------------------- |
+| GET    | `/products/:productId/variants`                 | —                                     | List all variants for a product                |
+| POST   | `/products/:productId/variants`                 | [Variant](#variant-fields)            | Add a new variant to a product                 |
+| PUT    | `/products/:productId/variants/:variantId`      | [Variant](#variant-fields)            | Replace a variant                              |
+| DELETE | `/products/:productId/variants/:variantId`      | —                                     | Delete a variant                               |
+
+Deleting a product also deletes its variants (cascade). When fetching a product (list, by slug, after create/update), each product response includes its `variants[]` array.
+
 The relationship is **bidirectional and automatic**: linking a product to a category also makes that product appear in the category's `productIds` list, and vice versa. You do not need to call a separate endpoint on the category side.
 
 Both operations are safe to repeat — linking an already-linked pair or unlinking a pair that was never linked causes no error.
@@ -315,14 +328,17 @@ The response includes `total`, `page`, and `perPage` alongside `results`:
 
 ### Product fields
 
+The **create and update payload** only accepts core product fields. `variants` are managed via the dedicated variant endpoints (see below).
+
 ```ts
-interface Product {
-  name: string; // required
-  description: string; // required
-  slug: string; // required — unique, URL-friendly identifier (e.g. "neon-heart")
+// What you send for POST /products and PUT /products/:id
+type ProductInput = {
+  name: string;          // required
+  description: string;   // required
+  slug: string;          // required — unique, URL-friendly identifier
   discountType?: string; // optional — e.g. "percentage" or "fixed"
-  discount?: number; // optional — e.g. 10 or 5
-}
+  discount?: number;     // optional — e.g. 10 or 5
+};
 ```
 
 | Field          | Type   | Required | Notes                                               |
@@ -334,6 +350,40 @@ interface Product {
 | `discount`     | number | no       | Integer discount value (e.g. `10` for 10%).         |
 
 The server rejects a create/update request with `400` if any required field is missing, empty, or whitespace. Strings are trimmed before saving.
+
+The **response** also includes read-only fields populated by the system:
+
+| Field       | Type        | Notes                                                                 |
+| ----------- | ----------- | --------------------------------------------------------------------- |
+| `id`        | number      | Auto-generated.                                                       |
+| `variants`  | Variant[]   | Size/price variants. Managed via the `/products/:productId/variants` endpoints. |
+| `createdAt` | string      | ISO datetime.                                                         |
+| `updatedAt` | string      | ISO datetime.                                                         |
+
+### Variant fields
+
+```ts
+// What you send for POST /products/:productId/variants and PUT /products/:productId/variants/:variantId
+type ProductVariantInput = {
+  price: number;     // required — must be > 0
+  width: number;     // required — must be > 0
+  height: number;    // required — must be > 0
+  sizeUnit: string;  // required — must be "cm" or "inch"
+};
+```
+
+| Field      | Type   | Required | Notes                                          |
+| ---------- | ------ | -------- | ---------------------------------------------- |
+| `price`    | number | yes      | Price for this size. Must be > 0.              |
+| `width`    | number | yes      | Width in `sizeUnit`. Must be > 0.              |
+| `height`   | number | yes      | Height in `sizeUnit`. Must be > 0.             |
+| `sizeUnit` | string | yes      | Either `"cm"` or `"inch"`. Trimmed before saving. |
+
+Validation rules:
+- All four fields are required on every create/update — `400` if any is missing or invalid.
+- `price`, `width`, and `height` must be positive numbers.
+- `sizeUnit` must equal `"cm"` or `"inch"` exactly (case-sensitive after trim).
+- Returns `404` if the product does not exist, or if the variant ID does not belong to the given product.
 
 ### Category fields
 
