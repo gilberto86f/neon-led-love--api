@@ -41,6 +41,7 @@ export const swaggerSpec = {
     { name: "Categories", description: "Product categories" },
     { name: "Product-Category", description: "Link and unlink products from categories" },
     { name: "Variants", description: "Size and price variants of a product" },
+    { name: "Color Options", description: "Available color choices for a product" },
   ],
   components: {
     parameters: {
@@ -100,6 +101,20 @@ export const swaggerSpec = {
         description: "Numeric variant ID",
         schema: { type: "integer", minimum: 1 },
       },
+      colorOptionProductId: {
+        name: "productId",
+        in: "path",
+        required: true,
+        description: "Numeric product ID",
+        schema: { type: "integer", minimum: 1 },
+      },
+      colorOptionId: {
+        name: "optionId",
+        in: "path",
+        required: true,
+        description: "Numeric color option ID",
+        schema: { type: "integer", minimum: 1 },
+      },
     },
     schemas: {
       // ── Entities ──────────────────────────────────────────────────────────
@@ -122,8 +137,56 @@ export const swaggerSpec = {
             description:
               "Size/price variants for this product. Managed via the Variants endpoints.",
           },
+          colorOptions: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ProductColorOption" },
+            description:
+              "Available color choices for this product. Managed via the Color Options endpoints.",
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      Color: {
+        type: "object",
+        required: ["colorName", "label", "colorCode", "light", "simpleColor"],
+        properties: {
+          colorName: { type: "string", example: "warm-white" },
+          label: { type: "string", example: "Warm White" },
+          colorCode: { type: "string", example: "#FFE6B3" },
+          light: { type: "boolean", example: true },
+          simpleColor: { type: "boolean", example: false },
+        },
+      },
+      ProductColorOption: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          description: { type: "string", example: "LED color" },
+          colors: {
+            type: "array",
+            items: { $ref: "#/components/schemas/Color" },
+          },
+          defaultColor: { $ref: "#/components/schemas/Color" },
+          productId: { type: "integer", example: 1 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      ProductColorOptionInput: {
+        type: "object",
+        required: ["description", "colors", "defaultColor"],
+        description:
+          "Fields accepted when creating or updating a color option. " +
+          "`colors` must be a non-empty array; each color and `defaultColor` must be a full Color object.",
+        properties: {
+          description: { type: "string", example: "LED color" },
+          colors: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/Color" },
+          },
+          defaultColor: { $ref: "#/components/schemas/Color" },
         },
       },
       ProductVariant: {
@@ -340,6 +403,26 @@ export const swaggerSpec = {
             items: { $ref: "#/components/schemas/ProductVariant" },
           },
           total: { type: "integer", example: 3 },
+        },
+      },
+      ProductColorOptionResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/ProductColorOption" },
+        },
+      },
+      ProductColorOptionListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: {
+            type: "array",
+            items: { $ref: "#/components/schemas/ProductColorOption" },
+          },
+          total: { type: "integer", example: 2 },
         },
       },
     },
@@ -638,6 +721,107 @@ export const swaggerSpec = {
         responses: {
           200: {
             description: "Variant deleted",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/DeletedResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Product Color Options ───────────────────────────────────────────────
+    "/api/products/{productId}/color-options": {
+      get: {
+        tags: ["Color Options"],
+        summary: "List color options",
+        description: "Returns all color options for the given product, ordered by ID. Returns 404 if the product does not exist.",
+        parameters: [{ $ref: "#/components/parameters/colorOptionProductId" }],
+        responses: {
+          200: {
+            description: "Color option list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductColorOptionListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      post: {
+        tags: ["Color Options"],
+        summary: "Create color option",
+        description:
+          "Adds a new color option to the given product. `description` is required, `colors` must be a non-empty array, and `defaultColor` must be a full Color object.",
+        parameters: [{ $ref: "#/components/parameters/colorOptionProductId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ProductColorOptionInput" },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Color option created",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductColorOptionResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    "/api/products/{productId}/color-options/{optionId}": {
+      put: {
+        tags: ["Color Options"],
+        summary: "Update color option",
+        description:
+          "Replaces all fields of an existing color option. Returns 404 if the option does not exist or does not belong to the given product.",
+        parameters: [
+          { $ref: "#/components/parameters/colorOptionProductId" },
+          { $ref: "#/components/parameters/colorOptionId" },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ProductColorOptionInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Color option updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductColorOptionResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      delete: {
+        tags: ["Color Options"],
+        summary: "Delete color option",
+        description: "Deletes a color option. Returns 404 if the option does not exist or does not belong to the given product.",
+        parameters: [
+          { $ref: "#/components/parameters/colorOptionProductId" },
+          { $ref: "#/components/parameters/colorOptionId" },
+        ],
+        responses: {
+          200: {
+            description: "Color option deleted",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/DeletedResponse" },

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { productController } from '../controllers/product.controller';
 import { productCategoryController } from '../controllers/productCategory.controller';
 import { productVariantController } from '../controllers/productVariant.controller';
+import { productColorOptionController } from '../controllers/productColorOption.controller';
 
 const router = Router();
 
@@ -18,5 +19,10 @@ router.get('/:productId/variants', productVariantController.list);
 router.post('/:productId/variants', productVariantController.create);
 router.put('/:productId/variants/:variantId', productVariantController.update);
 router.delete('/:productId/variants/:variantId', productVariantController.remove);
+
+router.get('/:productId/color-options', productColorOptionController.list);
+router.post('/:productId/color-options', productColorOptionController.create);
+router.put('/:productId/color-options/:optionId', productColorOptionController.update);
+router.delete('/:productId/color-options/:optionId', productColorOptionController.remove);
 
 export default router;

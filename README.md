@@ -249,6 +249,19 @@ A variant is one specific size/price for a product. A product can have many vari
 
 Deleting a product also deletes its variants (cascade). When fetching a product (list, by slug, after create/update), each product response includes its `variants[]` array.
 
+**Product color options**
+
+A color option is a group of color choices for a product (e.g. "LED color" with warm-white, cool-white, RGB). A product can have many color options. Color options are managed via their own endpoints — you do **not** edit them by replacing the product.
+
+| Method | Path                                                  | Body                                            | What it does                                |
+| ------ | ----------------------------------------------------- | ----------------------------------------------- | ------------------------------------------- |
+| GET    | `/products/:productId/color-options`                  | —                                               | List all color options for a product        |
+| POST   | `/products/:productId/color-options`                  | [ColorOption](#color-option-fields)             | Add a new color option to a product         |
+| PUT    | `/products/:productId/color-options/:optionId`        | [ColorOption](#color-option-fields)             | Replace a color option                      |
+| DELETE | `/products/:productId/color-options/:optionId`        | —                                               | Delete a color option                       |
+
+Deleting a product also deletes its color options (cascade). Each product response includes its `colorOptions[]` array.
+
 The relationship is **bidirectional and automatic**: linking a product to a category also makes that product appear in the category's `productIds` list, and vice versa. You do not need to call a separate endpoint on the category side.
 
 Both operations are safe to repeat — linking an already-linked pair or unlinking a pair that was never linked causes no error.
@@ -355,10 +368,11 @@ The **response** also includes read-only fields populated by the system:
 
 | Field       | Type        | Notes                                                                 |
 | ----------- | ----------- | --------------------------------------------------------------------- |
-| `id`        | number      | Auto-generated.                                                       |
-| `variants`  | Variant[]   | Size/price variants. Managed via the `/products/:productId/variants` endpoints. |
-| `createdAt` | string      | ISO datetime.                                                         |
-| `updatedAt` | string      | ISO datetime.                                                         |
+| `id`           | number          | Auto-generated.                                                       |
+| `variants`     | Variant[]       | Size/price variants. Managed via the `/products/:productId/variants` endpoints. |
+| `colorOptions` | ColorOption[]   | Color choices. Managed via the `/products/:productId/color-options` endpoints.  |
+| `createdAt`    | string          | ISO datetime.                                                         |
+| `updatedAt`    | string          | ISO datetime.                                                         |
 
 ### Variant fields
 
@@ -384,6 +398,41 @@ Validation rules:
 - `price`, `width`, and `height` must be positive numbers.
 - `sizeUnit` must equal `"cm"` or `"inch"` exactly (case-sensitive after trim).
 - Returns `404` if the product does not exist, or if the variant ID does not belong to the given product.
+
+### Color option fields
+
+A color option groups several available colors plus the default selection from that group.
+
+```ts
+type Color = {
+  colorName: string;   // unique identifier within the option, e.g. "warm-white"
+  label: string;       // human-readable label, e.g. "Warm White"
+  colorCode: string;   // CSS color value, e.g. "#FFE6B3"
+  light: boolean;      // whether the color reads as a light shade
+  simpleColor: boolean;// whether this is a plain color (vs. multi-color/RGB)
+};
+
+// What you send for POST /products/:productId/color-options and PUT /products/:productId/color-options/:optionId
+type ProductColorOptionInput = {
+  description: string;   // required — what this group represents (e.g. "LED color")
+  colors: Color[];       // required — must be a non-empty array of Color objects
+  defaultColor: Color;   // required — the default selection (a full Color object)
+};
+```
+
+| Field          | Type    | Required | Notes                                                                  |
+| -------------- | ------- | -------- | ---------------------------------------------------------------------- |
+| `description`  | string  | yes      | Trimmed before saving.                                                 |
+| `colors`       | Color[] | yes      | Must be a non-empty array. Each entry must be a full Color object.     |
+| `defaultColor` | Color   | yes      | Must be a full Color object. Stored alongside `colors` on the option.  |
+
+Validation rules for every Color object (in `colors[i]` and `defaultColor`):
+- `colorName`, `label`, `colorCode` are required non-empty strings (trimmed before saving).
+- `light` and `simpleColor` are required booleans.
+- Returns `400` if any field is missing or has the wrong type.
+- Returns `404` if the product does not exist, or if the option ID does not belong to the given product.
+
+`colors` and `defaultColor` are stored as JSON in the database (no separate Color table), so adding new fields to a Color shape later does not require a migration.
 
 ### Category fields
 

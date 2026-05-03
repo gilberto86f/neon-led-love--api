@@ -73,14 +73,14 @@ export const productService = {
       where.categories = { some: { id: categoryId } };
     }
     const [results, total] = await prisma.$transaction([
-      prisma.product.findMany({ where, orderBy: { id: "asc" }, skip, take: perPage, include: { variants: true } }),
+      prisma.product.findMany({ where, orderBy: { id: "asc" }, skip, take: perPage, include: { variants: true, colorOptions: true } }),
       prisma.product.count({ where }),
     ]);
     return { results, total };
   },
 
   getBySlug: async (slug: string) => {
-    const product = await prisma.product.findUnique({ where: { slug }, include: { variants: true } });
+    const product = await prisma.product.findUnique({ where: { slug }, include: { variants: true, colorOptions: true } });
     if (!product) throw new HttpError(404, `Product not found "${slug}"`);
     return product;
   },
@@ -93,7 +93,7 @@ export const productService = {
 
   create: async (input: ProductInput) => {
     validate(input);
-    return prisma.product.create({ data: normalize(input), include: { variants: true } });
+    return prisma.product.create({ data: normalize(input), include: { variants: true, colorOptions: true } });
   },
 
   update: async (id: number, input: ProductInput) => {
@@ -102,7 +102,7 @@ export const productService = {
     return prisma.product.update({
       where: { id },
       data: normalize(input),
-      include: { variants: true },
+      include: { variants: true, colorOptions: true },
     });
   },
 

@@ -18,6 +18,7 @@ model Product {
   updatedAt    DateTime         @updatedAt
   categories   Category[]
   variants     ProductVariant[]
+  colorOptions ProductColorOption[]
 }
 
 model ProductVariant {
@@ -30,6 +31,17 @@ model ProductVariant {
   updatedAt DateTime @updatedAt
   productId Int
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+}
+
+model ProductColorOption {
+  id           Int      @id @default(autoincrement())
+  description  String
+  colors       Json
+  defaultColor Json
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  productId    Int
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 }
 
 model Category {
