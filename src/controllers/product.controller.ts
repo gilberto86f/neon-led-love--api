@@ -26,7 +26,8 @@ export const productController = {
         categoryId = Number(req.query.categoryId);
         if (!Number.isInteger(categoryId) || categoryId <= 0) throw new HttpError(400, "Invalid categoryId");
       }
-      const { results, total } = await productService.list({ page, perPage, search, categoryId });
+      const tagSlug = req.query.tagSlug ? String(req.query.tagSlug).trim() : undefined;
+      const { results, total } = await productService.list({ page, perPage, search, categoryId, tagSlug });
       res.status(200).json(okList(results, { total, page, perPage }));
     } catch (err) {
       next(err);

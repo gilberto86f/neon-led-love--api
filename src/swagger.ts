@@ -541,6 +541,12 @@ export const swaggerSpec = {
             description: "Filter to products linked to this category ID.",
             schema: { type: "integer", minimum: 1 },
           },
+          {
+            name: "tagSlug",
+            in: "query",
+            description: "Filter to products that have a tag with this slug (case-sensitive).",
+            schema: { type: "string" },
+          },
         ],
         responses: {
           200: {

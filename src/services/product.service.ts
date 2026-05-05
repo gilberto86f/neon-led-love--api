@@ -55,11 +55,13 @@ export const productService = {
     perPage,
     search,
     categoryId,
+    tagSlug,
   }: {
     page: number;
     perPage: number;
     search?: string;
     categoryId?: number;
+    tagSlug?: string;
   }) => {
     const skip = (page - 1) * perPage;
     const where: Prisma.ProductWhereInput = {};
@@ -71,6 +73,9 @@ export const productService = {
     }
     if (categoryId !== undefined) {
       where.categories = { some: { id: categoryId } };
+    }
+    if (tagSlug) {
+      where.tags = { some: { slug: tagSlug } };
     }
     const [results, total] = await prisma.$transaction([
       prisma.product.findMany({ where, orderBy: { id: "asc" }, skip, take: perPage, include: { variants: true, colorOptions: true, tags: true } }),

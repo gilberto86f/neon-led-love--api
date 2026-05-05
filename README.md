@@ -209,43 +209,43 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 
 **Products**
 
-| Method | Path              | Body (JSON)                | What it does            |
-| ------ | ----------------- | -------------------------- | ----------------------- |
+| Method | Path              | Body (JSON)                | What it does              |
+| ------ | ----------------- | -------------------------- | ------------------------- |
 | GET    | `/products`       | —                          | List products (paginated) |
-| GET    | `/products/:slug` | —                          | Get one product by slug |
-| POST   | `/products`       | [Product](#product-fields) | Create a new product    |
-| PUT    | `/products/:id`   | [Product](#product-fields) | Replace a product       |
-| DELETE | `/products/:id`   | —                          | Delete a product        |
+| GET    | `/products/:slug` | —                          | Get one product by slug   |
+| POST   | `/products`       | [Product](#product-fields) | Create a new product      |
+| PUT    | `/products/:id`   | [Product](#product-fields) | Replace a product         |
+| DELETE | `/products/:id`   | —                          | Delete a product          |
 
 **Categories**
 
-| Method | Path                | Body (JSON)                  | What it does             |
-| ------ | ------------------- | ---------------------------- | ------------------------ |
+| Method | Path                | Body (JSON)                  | What it does                |
+| ------ | ------------------- | ---------------------------- | --------------------------- |
 | GET    | `/categories`       | —                            | List categories (paginated) |
-| GET    | `/categories/:slug` | —                            | Get one category by slug |
-| POST   | `/categories`       | [Category](#category-fields) | Create a new category    |
-| PUT    | `/categories/:id`   | [Category](#category-fields) | Replace a category       |
-| DELETE | `/categories/:id`   | —                            | Delete a category        |
+| GET    | `/categories/:slug` | —                            | Get one category by slug    |
+| POST   | `/categories`       | [Category](#category-fields) | Create a new category       |
+| PUT    | `/categories/:id`   | [Category](#category-fields) | Replace a category          |
+| DELETE | `/categories/:id`   | —                            | Delete a category           |
 
 **Product-Category relations**
 
 These endpoints manage which categories a product belongs to. Both IDs must refer to existing records.
 
-| Method | Path                                       | Body | What it does                    |
-| ------ | ------------------------------------------ | ---- | ------------------------------- |
-| POST   | `/products/:productId/categories/:categoryId` | —    | Link a category to a product    |
+| Method | Path                                          | Body | What it does                     |
+| ------ | --------------------------------------------- | ---- | -------------------------------- |
+| POST   | `/products/:productId/categories/:categoryId` | —    | Link a category to a product     |
 | DELETE | `/products/:productId/categories/:categoryId` | —    | Unlink a category from a product |
 
 **Product variants**
 
 A variant is one specific size/price for a product. A product can have many variants (e.g. small, medium, large). Variants are managed via their own endpoints — you do **not** edit them by replacing the product.
 
-| Method | Path                                            | Body                                  | What it does                                   |
-| ------ | ----------------------------------------------- | ------------------------------------- | ---------------------------------------------- |
-| GET    | `/products/:productId/variants`                 | —                                     | List all variants for a product                |
-| POST   | `/products/:productId/variants`                 | [Variant](#variant-fields)            | Add a new variant to a product                 |
-| PUT    | `/products/:productId/variants/:variantId`      | [Variant](#variant-fields)            | Replace a variant                              |
-| DELETE | `/products/:productId/variants/:variantId`      | —                                     | Delete a variant                               |
+| Method | Path                                       | Body                       | What it does                    |
+| ------ | ------------------------------------------ | -------------------------- | ------------------------------- |
+| GET    | `/products/:productId/variants`            | —                          | List all variants for a product |
+| POST   | `/products/:productId/variants`            | [Variant](#variant-fields) | Add a new variant to a product  |
+| PUT    | `/products/:productId/variants/:variantId` | [Variant](#variant-fields) | Replace a variant               |
+| DELETE | `/products/:productId/variants/:variantId` | —                          | Delete a variant                |
 
 Deleting a product also deletes its variants (cascade). When fetching a product (list, by slug, after create/update), each product response includes its `variants[]` array.
 
@@ -253,12 +253,12 @@ Deleting a product also deletes its variants (cascade). When fetching a product 
 
 A color option is a group of color choices for a product (e.g. "LED color" with warm-white, cool-white, RGB). A product can have many color options. Color options are managed via their own endpoints — you do **not** edit them by replacing the product.
 
-| Method | Path                                                  | Body                                            | What it does                                |
-| ------ | ----------------------------------------------------- | ----------------------------------------------- | ------------------------------------------- |
-| GET    | `/products/:productId/color-options`                  | —                                               | List all color options for a product        |
-| POST   | `/products/:productId/color-options`                  | [ColorOption](#color-option-fields)             | Add a new color option to a product         |
-| PUT    | `/products/:productId/color-options/:optionId`        | [ColorOption](#color-option-fields)             | Replace a color option                      |
-| DELETE | `/products/:productId/color-options/:optionId`        | —                                               | Delete a color option                       |
+| Method | Path                                           | Body                                | What it does                         |
+| ------ | ---------------------------------------------- | ----------------------------------- | ------------------------------------ |
+| GET    | `/products/:productId/color-options`           | —                                   | List all color options for a product |
+| POST   | `/products/:productId/color-options`           | [ColorOption](#color-option-fields) | Add a new color option to a product  |
+| PUT    | `/products/:productId/color-options/:optionId` | [ColorOption](#color-option-fields) | Replace a color option               |
+| DELETE | `/products/:productId/color-options/:optionId` | —                                   | Delete a color option                |
 
 Deleting a product also deletes its color options (cascade). Each product response includes its `colorOptions[]` array.
 
@@ -266,12 +266,12 @@ Deleting a product also deletes its color options (cascade). Each product respon
 
 A tag is a short label belonging to a product (e.g. "outdoor", "bestseller"). A product can have many tags. Tags are managed via their own endpoints — you do **not** edit them by replacing the product.
 
-| Method | Path                                            | Body                       | What it does                                |
-| ------ | ----------------------------------------------- | -------------------------- | ------------------------------------------- |
-| GET    | `/products/:productId/tags`                     | —                          | List all tags for a product                 |
-| POST   | `/products/:productId/tags`                     | [Tag](#tag-fields)         | Add a new tag to a product                  |
-| PUT    | `/products/:productId/tags/:tagId`              | [Tag](#tag-fields)         | Replace a tag                               |
-| DELETE | `/products/:productId/tags/:tagId`              | —                          | Delete a tag                                |
+| Method | Path                               | Body               | What it does                |
+| ------ | ---------------------------------- | ------------------ | --------------------------- |
+| GET    | `/products/:productId/tags`        | —                  | List all tags for a product |
+| POST   | `/products/:productId/tags`        | [Tag](#tag-fields) | Add a new tag to a product  |
+| PUT    | `/products/:productId/tags/:tagId` | [Tag](#tag-fields) | Replace a tag               |
+| DELETE | `/products/:productId/tags/:tagId` | —                  | Delete a tag                |
 
 Deleting a product also deletes its tags (cascade). Each product response includes its `tags[]` array. `slug` must be unique within the product — adding a second tag with the same slug returns `400`.
 
@@ -300,10 +300,10 @@ The response returns the updated product with a `categoryIds` field showing its 
 
 Both list endpoints (`GET /products` and `GET /categories`) accept query parameters:
 
-| Parameter | Type   | Default | Max | Description              |
-| --------- | ------ | ------- | --- | ------------------------ |
-| `page`    | number | `1`     | —   | Page number (1-based).   |
-| `perPage` | number | `20`    | 100 | Items per page.          |
+| Parameter | Type   | Default | Max | Description            |
+| --------- | ------ | ------- | --- | ---------------------- |
+| `page`    | number | `1`     | —   | Page number (1-based). |
+| `perPage` | number | `20`    | 100 | Items per page.        |
 
 Example: `GET /api/products?page=2&perPage=10`
 
@@ -311,28 +311,32 @@ Example: `GET /api/products?page=2&perPage=10`
 
 `GET /products` accepts additional filter query parameters that can be combined freely:
 
-| Parameter    | Type   | Description                                                                 |
-| ------------ | ------ | --------------------------------------------------------------------------- |
+| Parameter    | Type   | Description                                                                            |
+| ------------ | ------ | -------------------------------------------------------------------------------------- |
 | `search`     | string | Return only products whose name or description contains this string (case-insensitive) |
-| `categoryId` | number | Return only products linked to the category with this ID                    |
+| `categoryId` | number | Return only products linked to the category with this ID                               |
+| `tagSlug`    | string | Return only products that have a tag with this slug (case-sensitive)                   |
 
 Examples:
+
 - `GET /api/products?search=pikachu` — products whose name or description contains "pikachu"
 - `GET /api/products?categoryId=123` — products in category 123
-- `GET /api/products?search=pikachu&categoryId=123` — both filters applied at once
+- `GET /api/products?tagSlug=coffee` — products that have a tag with slug "coffee"
+- `GET /api/products?search=pikachu&categoryId=123&tagSlug=coffee` — all three filters applied at once
 
-Filters return an empty list (not a 404) when no products match. `categoryId` returns `400` if it is not a positive integer. Blank `search` values are ignored.
+Filters return an empty list (not a 404) when no products match. `categoryId` returns `400` if it is not a positive integer. Blank `search` and `tagSlug` values are ignored.
 
 ### Filtering categories
 
 `GET /categories` accepts additional filter query parameters that can be combined freely:
 
-| Parameter   | Type   | Description                                                                |
-| ----------- | ------ | -------------------------------------------------------------------------- |
-| `productId` | number | Return only categories linked to the product with this ID                  |
+| Parameter   | Type   | Description                                                                              |
+| ----------- | ------ | ---------------------------------------------------------------------------------------- |
+| `productId` | number | Return only categories linked to the product with this ID                                |
 | `search`    | string | Return only categories whose name or description contains this string (case-insensitive) |
 
 Examples:
+
 - `GET /api/categories?productId=3` — categories linked to product 3
 - `GET /api/categories?search=outdoor` — categories whose name or description contains "outdoor"
 - `GET /api/categories?productId=3&search=outdoor` — both filters applied at once
@@ -359,11 +363,11 @@ The **create and update payload** only accepts core product fields. `variants` a
 ```ts
 // What you send for POST /products and PUT /products/:id
 type ProductInput = {
-  name: string;          // required
-  description: string;   // required
-  slug: string;          // required — unique, URL-friendly identifier
+  name: string; // required
+  description: string; // required
+  slug: string; // required — unique, URL-friendly identifier
   discountType?: string; // optional — e.g. "percentage" or "fixed"
-  discount?: number;     // optional — e.g. 10 or 5
+  discount?: number; // optional — e.g. 10 or 5
 };
 ```
 
@@ -379,35 +383,36 @@ The server rejects a create/update request with `400` if any required field is m
 
 The **response** also includes read-only fields populated by the system:
 
-| Field       | Type        | Notes                                                                 |
-| ----------- | ----------- | --------------------------------------------------------------------- |
-| `id`           | number          | Auto-generated.                                                       |
-| `variants`     | Variant[]       | Size/price variants. Managed via the `/products/:productId/variants` endpoints. |
-| `colorOptions` | ColorOption[]   | Color choices. Managed via the `/products/:productId/color-options` endpoints.  |
-| `tags`         | Tag[]           | Tags. Managed via the `/products/:productId/tags` endpoints.          |
-| `createdAt`    | string          | ISO datetime.                                                         |
-| `updatedAt`    | string          | ISO datetime.                                                         |
+| Field          | Type          | Notes                                                                           |
+| -------------- | ------------- | ------------------------------------------------------------------------------- |
+| `id`           | number        | Auto-generated.                                                                 |
+| `variants`     | Variant[]     | Size/price variants. Managed via the `/products/:productId/variants` endpoints. |
+| `colorOptions` | ColorOption[] | Color choices. Managed via the `/products/:productId/color-options` endpoints.  |
+| `tags`         | Tag[]         | Tags. Managed via the `/products/:productId/tags` endpoints.                    |
+| `createdAt`    | string        | ISO datetime.                                                                   |
+| `updatedAt`    | string        | ISO datetime.                                                                   |
 
 ### Variant fields
 
 ```ts
 // What you send for POST /products/:productId/variants and PUT /products/:productId/variants/:variantId
 type ProductVariantInput = {
-  price: number;     // required — must be > 0
-  width: number;     // required — must be > 0
-  height: number;    // required — must be > 0
-  sizeUnit: string;  // required — must be "cm" or "inch"
+  price: number; // required — must be > 0
+  width: number; // required — must be > 0
+  height: number; // required — must be > 0
+  sizeUnit: string; // required — must be "cm" or "inch"
 };
 ```
 
-| Field      | Type   | Required | Notes                                          |
-| ---------- | ------ | -------- | ---------------------------------------------- |
-| `price`    | number | yes      | Price for this size. Must be > 0.              |
-| `width`    | number | yes      | Width in `sizeUnit`. Must be > 0.              |
-| `height`   | number | yes      | Height in `sizeUnit`. Must be > 0.             |
+| Field      | Type   | Required | Notes                                             |
+| ---------- | ------ | -------- | ------------------------------------------------- |
+| `price`    | number | yes      | Price for this size. Must be > 0.                 |
+| `width`    | number | yes      | Width in `sizeUnit`. Must be > 0.                 |
+| `height`   | number | yes      | Height in `sizeUnit`. Must be > 0.                |
 | `sizeUnit` | string | yes      | Either `"cm"` or `"inch"`. Trimmed before saving. |
 
 Validation rules:
+
 - All four fields are required on every create/update — `400` if any is missing or invalid.
 - `price`, `width`, and `height` must be positive numbers.
 - `sizeUnit` must equal `"cm"` or `"inch"` exactly (case-sensitive after trim).
@@ -419,28 +424,29 @@ A color option groups several available colors plus the default selection from t
 
 ```ts
 type Color = {
-  colorName: string;   // unique identifier within the option, e.g. "warm-white"
-  label: string;       // human-readable label, e.g. "Warm White"
-  colorCode: string;   // CSS color value, e.g. "#FFE6B3"
-  light: boolean;      // whether the color reads as a light shade
-  simpleColor: boolean;// whether this is a plain color (vs. multi-color/RGB)
+  colorName: string; // unique identifier within the option, e.g. "warm-white"
+  label: string; // human-readable label, e.g. "Warm White"
+  colorCode: string; // CSS color value, e.g. "#FFE6B3"
+  light: boolean; // whether the color reads as a light shade
+  simpleColor: boolean; // whether this is a plain color (vs. multi-color/RGB)
 };
 
 // What you send for POST /products/:productId/color-options and PUT /products/:productId/color-options/:optionId
 type ProductColorOptionInput = {
-  description: string;   // required — what this group represents (e.g. "LED color")
-  colors: Color[];       // required — must be a non-empty array of Color objects
-  defaultColor: Color;   // required — the default selection (a full Color object)
+  description: string; // required — what this group represents (e.g. "LED color")
+  colors: Color[]; // required — must be a non-empty array of Color objects
+  defaultColor: Color; // required — the default selection (a full Color object)
 };
 ```
 
-| Field          | Type    | Required | Notes                                                                  |
-| -------------- | ------- | -------- | ---------------------------------------------------------------------- |
-| `description`  | string  | yes      | Trimmed before saving.                                                 |
-| `colors`       | Color[] | yes      | Must be a non-empty array. Each entry must be a full Color object.     |
-| `defaultColor` | Color   | yes      | Must be a full Color object. Stored alongside `colors` on the option.  |
+| Field          | Type    | Required | Notes                                                                 |
+| -------------- | ------- | -------- | --------------------------------------------------------------------- |
+| `description`  | string  | yes      | Trimmed before saving.                                                |
+| `colors`       | Color[] | yes      | Must be a non-empty array. Each entry must be a full Color object.    |
+| `defaultColor` | Color   | yes      | Must be a full Color object. Stored alongside `colors` on the option. |
 
 Validation rules for every Color object (in `colors[i]` and `defaultColor`):
+
 - `colorName`, `label`, `colorCode` are required non-empty strings (trimmed before saving).
 - `light` and `simpleColor` are required booleans.
 - Returns `400` if any field is missing or has the wrong type.
@@ -453,17 +459,18 @@ Validation rules for every Color object (in `colors[i]` and `defaultColor`):
 ```ts
 // What you send for POST /products/:productId/tags and PUT /products/:productId/tags/:tagId
 type TagInput = {
-  name: string;  // required
-  slug: string;  // required — unique within the product
+  name: string; // required
+  slug: string; // required — unique within the product
 };
 ```
 
-| Field  | Type   | Required | Notes                                                                  |
-| ------ | ------ | -------- | ---------------------------------------------------------------------- |
-| `name` | string | yes      | Display name. Trimmed before saving.                                   |
-| `slug` | string | yes      | Unique within the product. Trimmed before saving.                      |
+| Field  | Type   | Required | Notes                                             |
+| ------ | ------ | -------- | ------------------------------------------------- |
+| `name` | string | yes      | Display name. Trimmed before saving.              |
+| `slug` | string | yes      | Unique within the product. Trimmed before saving. |
 
 Validation rules:
+
 - Both fields are required and must be non-empty after trimming — `400` if missing or invalid.
 - `slug` must be unique among the product's tags — `400` with a clear message if a duplicate is attempted.
 - Returns `404` if the product does not exist, or if the tag ID does not belong to the given product.
@@ -477,11 +484,11 @@ The **create and update payload** only accepts core fields. `images`, `tagIds`, 
 ```ts
 // What you send for POST /categories and PUT /categories/:id
 type CategoryPayload = {
-  name: string;        // required
-  slug: string;        // required — unique, URL-friendly identifier
+  name: string; // required
+  slug: string; // required — unique, URL-friendly identifier
   description: string; // required
-  isActive: boolean;   // required
-  notes: string;       // required — internal notes
+  isActive: boolean; // required
+  notes: string; // required — internal notes
 };
 ```
 
@@ -495,14 +502,14 @@ type CategoryPayload = {
 
 The **response** includes additional read-only fields populated by the system:
 
-| Field        | Type     | Notes                                                          |
-| ------------ | -------- | -------------------------------------------------------------- |
-| `id`         | number   | Auto-generated.                                                |
-| `images`     | string[] | Managed by a dedicated image service (not yet implemented).    |
-| `tagIds`     | number[] | IDs of linked tags. Managed by Tag service (not yet implemented). |
+| Field        | Type     | Notes                                                                                          |
+| ------------ | -------- | ---------------------------------------------------------------------------------------------- |
+| `id`         | number   | Auto-generated.                                                                                |
+| `images`     | string[] | Managed by a dedicated image service (not yet implemented).                                    |
+| `tagIds`     | number[] | IDs of linked tags. Managed by Tag service (not yet implemented).                              |
 | `productIds` | number[] | IDs of linked products. Managed via `POST/DELETE /products/:productId/categories/:categoryId`. |
-| `createdAt`  | string   | ISO datetime.                                                  |
-| `updatedAt`  | string   | ISO datetime.                                                  |
+| `createdAt`  | string   | ISO datetime.                                                                                  |
+| `updatedAt`  | string   | ISO datetime.                                                                                  |
 
 ### 7.1. curl examples (works in PowerShell)
 
