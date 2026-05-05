@@ -3,6 +3,7 @@ import { productController } from '../controllers/product.controller';
 import { productCategoryController } from '../controllers/productCategory.controller';
 import { productVariantController } from '../controllers/productVariant.controller';
 import { productColorOptionController } from '../controllers/productColorOption.controller';
+import { tagController } from '../controllers/tag.controller';
 
 const router = Router();
 
@@ -24,5 +25,10 @@ router.get('/:productId/color-options', productColorOptionController.list);
 router.post('/:productId/color-options', productColorOptionController.create);
 router.put('/:productId/color-options/:optionId', productColorOptionController.update);
 router.delete('/:productId/color-options/:optionId', productColorOptionController.remove);
+
+router.get('/:productId/tags', tagController.list);
+router.post('/:productId/tags', tagController.create);
+router.put('/:productId/tags/:tagId', tagController.update);
+router.delete('/:productId/tags/:tagId', tagController.remove);
 
 export default router;

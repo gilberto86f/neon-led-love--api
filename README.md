@@ -262,6 +262,19 @@ A color option is a group of color choices for a product (e.g. "LED color" with 
 
 Deleting a product also deletes its color options (cascade). Each product response includes its `colorOptions[]` array.
 
+**Product tags**
+
+A tag is a short label belonging to a product (e.g. "outdoor", "bestseller"). A product can have many tags. Tags are managed via their own endpoints — you do **not** edit them by replacing the product.
+
+| Method | Path                                            | Body                       | What it does                                |
+| ------ | ----------------------------------------------- | -------------------------- | ------------------------------------------- |
+| GET    | `/products/:productId/tags`                     | —                          | List all tags for a product                 |
+| POST   | `/products/:productId/tags`                     | [Tag](#tag-fields)         | Add a new tag to a product                  |
+| PUT    | `/products/:productId/tags/:tagId`              | [Tag](#tag-fields)         | Replace a tag                               |
+| DELETE | `/products/:productId/tags/:tagId`              | —                          | Delete a tag                                |
+
+Deleting a product also deletes its tags (cascade). Each product response includes its `tags[]` array. `slug` must be unique within the product — adding a second tag with the same slug returns `400`.
+
 The relationship is **bidirectional and automatic**: linking a product to a category also makes that product appear in the category's `productIds` list, and vice versa. You do not need to call a separate endpoint on the category side.
 
 Both operations are safe to repeat — linking an already-linked pair or unlinking a pair that was never linked causes no error.
@@ -371,6 +384,7 @@ The **response** also includes read-only fields populated by the system:
 | `id`           | number          | Auto-generated.                                                       |
 | `variants`     | Variant[]       | Size/price variants. Managed via the `/products/:productId/variants` endpoints. |
 | `colorOptions` | ColorOption[]   | Color choices. Managed via the `/products/:productId/color-options` endpoints.  |
+| `tags`         | Tag[]           | Tags. Managed via the `/products/:productId/tags` endpoints.          |
 | `createdAt`    | string          | ISO datetime.                                                         |
 | `updatedAt`    | string          | ISO datetime.                                                         |
 
@@ -433,6 +447,28 @@ Validation rules for every Color object (in `colors[i]` and `defaultColor`):
 - Returns `404` if the product does not exist, or if the option ID does not belong to the given product.
 
 `colors` and `defaultColor` are stored as JSON in the database (no separate Color table), so adding new fields to a Color shape later does not require a migration.
+
+### Tag fields
+
+```ts
+// What you send for POST /products/:productId/tags and PUT /products/:productId/tags/:tagId
+type TagInput = {
+  name: string;  // required
+  slug: string;  // required — unique within the product
+};
+```
+
+| Field  | Type   | Required | Notes                                                                  |
+| ------ | ------ | -------- | ---------------------------------------------------------------------- |
+| `name` | string | yes      | Display name. Trimmed before saving.                                   |
+| `slug` | string | yes      | Unique within the product. Trimmed before saving.                      |
+
+Validation rules:
+- Both fields are required and must be non-empty after trimming — `400` if missing or invalid.
+- `slug` must be unique among the product's tags — `400` with a clear message if a duplicate is attempted.
+- Returns `404` if the product does not exist, or if the tag ID does not belong to the given product.
+
+Tags are scoped to a single product. Two different products can each have a tag with slug `"outdoor"` — the uniqueness rule only applies within one product's tag list.
 
 ### Category fields
 

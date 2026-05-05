@@ -42,6 +42,7 @@ export const swaggerSpec = {
     { name: "Product-Category", description: "Link and unlink products from categories" },
     { name: "Variants", description: "Size and price variants of a product" },
     { name: "Color Options", description: "Available color choices for a product" },
+    { name: "Tags", description: "Tags belonging to a product" },
   ],
   components: {
     parameters: {
@@ -115,6 +116,20 @@ export const swaggerSpec = {
         description: "Numeric color option ID",
         schema: { type: "integer", minimum: 1 },
       },
+      tagProductId: {
+        name: "productId",
+        in: "path",
+        required: true,
+        description: "Numeric product ID",
+        schema: { type: "integer", minimum: 1 },
+      },
+      tagId: {
+        name: "tagId",
+        in: "path",
+        required: true,
+        description: "Numeric tag ID",
+        schema: { type: "integer", minimum: 1 },
+      },
     },
     schemas: {
       // ── Entities ──────────────────────────────────────────────────────────
@@ -143,8 +158,36 @@ export const swaggerSpec = {
             description:
               "Available color choices for this product. Managed via the Color Options endpoints.",
           },
+          tags: {
+            type: "array",
+            items: { $ref: "#/components/schemas/Tag" },
+            description:
+              "Tags belonging to this product. Managed via the Tags endpoints.",
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      Tag: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          name: { type: "string", example: "Outdoor" },
+          slug: { type: "string", example: "outdoor" },
+          productId: { type: "integer", example: 1 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      TagInput: {
+        type: "object",
+        required: ["name", "slug"],
+        description:
+          "Fields accepted when creating or updating a tag. " +
+          "`slug` must be unique per product (case-sensitive after trim).",
+        properties: {
+          name: { type: "string", example: "Outdoor" },
+          slug: { type: "string", example: "outdoor" },
         },
       },
       Color: {
@@ -423,6 +466,26 @@ export const swaggerSpec = {
             items: { $ref: "#/components/schemas/ProductColorOption" },
           },
           total: { type: "integer", example: 2 },
+        },
+      },
+      TagResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/Tag" },
+        },
+      },
+      TagListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: {
+            type: "array",
+            items: { $ref: "#/components/schemas/Tag" },
+          },
+          total: { type: "integer", example: 4 },
         },
       },
     },
@@ -822,6 +885,107 @@ export const swaggerSpec = {
         responses: {
           200: {
             description: "Color option deleted",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/DeletedResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Product Tags ────────────────────────────────────────────────────────
+    "/api/products/{productId}/tags": {
+      get: {
+        tags: ["Tags"],
+        summary: "List tags",
+        description: "Returns all tags for the given product, ordered by ID. Returns 404 if the product does not exist.",
+        parameters: [{ $ref: "#/components/parameters/tagProductId" }],
+        responses: {
+          200: {
+            description: "Tag list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TagListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      post: {
+        tags: ["Tags"],
+        summary: "Create tag",
+        description:
+          "Adds a new tag to the given product. `name` and `slug` are required. `slug` must be unique within the product (returns 400 on duplicate).",
+        parameters: [{ $ref: "#/components/parameters/tagProductId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/TagInput" },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Tag created",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TagResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    "/api/products/{productId}/tags/{tagId}": {
+      put: {
+        tags: ["Tags"],
+        summary: "Update tag",
+        description:
+          "Replaces all fields of an existing tag. `slug` must remain unique within the product (returns 400 on duplicate). Returns 404 if the tag does not exist or does not belong to the given product.",
+        parameters: [
+          { $ref: "#/components/parameters/tagProductId" },
+          { $ref: "#/components/parameters/tagId" },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/TagInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Tag updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TagResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      delete: {
+        tags: ["Tags"],
+        summary: "Delete tag",
+        description: "Deletes a tag. Returns 404 if the tag does not exist or does not belong to the given product.",
+        parameters: [
+          { $ref: "#/components/parameters/tagProductId" },
+          { $ref: "#/components/parameters/tagId" },
+        ],
+        responses: {
+          200: {
+            description: "Tag deleted",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/DeletedResponse" },
