@@ -205,7 +205,7 @@ If you get this, the server is working.
 
 ## 7. Trying the API
 
-The API base URL is `http://localhost:3000/api`. All product endpoints live under `/products` and all category endpoints under `/categories`.
+The API base URL is `http://localhost:3000/api`. All product endpoints live under `/products`, all category endpoints under `/categories`, and all tag endpoints under `/tags`.
 
 **Products**
 
@@ -271,18 +271,31 @@ A color option is a group of color choices for a product (e.g. "LED color" with 
 
 Deleting a product also deletes its color options (cascade). Each product response includes its `colorOptions[]` array.
 
-**Product tags**
+**Tags**
 
-A tag is a short label belonging to a product (e.g. "outdoor", "bestseller"). A product can have many tags. Tags are managed via their own endpoints — you do **not** edit them by replacing the product.
+A tag is a short label (e.g. "outdoor", "bestseller") that can be attached to any number of products. Tags are **standalone entities**: you create, update, and delete them through their own endpoints, then link/unlink them to products separately.
 
-| Method | Path                               | Body               | What it does                |
-| ------ | ---------------------------------- | ------------------ | --------------------------- |
-| GET    | `/products/:productId/tags`        | —                  | List all tags for a product |
-| POST   | `/products/:productId/tags`        | [Tag](#tag-fields) | Add a new tag to a product  |
-| PUT    | `/products/:productId/tags/:tagId` | [Tag](#tag-fields) | Replace a tag               |
-| DELETE | `/products/:productId/tags/:tagId` | —                  | Delete a tag                |
+| Method | Path           | Body (JSON)        | What it does           |
+| ------ | -------------- | ------------------ | ---------------------- |
+| GET    | `/tags`        | —                  | List tags (paginated)  |
+| GET    | `/tags/:slug`  | —                  | Get one tag by slug    |
+| POST   | `/tags`        | [Tag](#tag-fields) | Create a new tag       |
+| PUT    | `/tags/:id`    | [Tag](#tag-fields) | Replace a tag          |
+| DELETE | `/tags/:id`    | —                  | Delete a tag           |
 
-Deleting a product also deletes its tags (cascade). Each product response includes its `tags[]` array. `slug` must be unique within the product — adding a second tag with the same slug returns `400`.
+`slug` is **globally unique** — two different tags can never share the same slug. Deleting a tag also removes it from every product it was linked to (the products themselves are not affected).
+
+**Product-Tag relations**
+
+These endpoints manage which tags a product has. Tags are **not** created here — create the tag with `POST /tags` first, then link it.
+
+| Method | Path                                 | Body | What it does                |
+| ------ | ------------------------------------ | ---- | --------------------------- |
+| GET    | `/products/:productId/tags`          | —    | List a product's tags       |
+| POST   | `/products/:productId/tags/:tagId`   | —    | Link an existing tag to a product   |
+| DELETE | `/products/:productId/tags/:tagId`   | —    | Unlink a tag from a product |
+
+Both IDs must refer to existing records or you get a `404`. Linking an already-linked pair, or unlinking a pair that was never linked, is a no-op (no error). Each product response still includes its `tags[]` array, and the link/unlink endpoints return the updated product with a `tagIds` field.
 
 The relationship is **bidirectional and automatic**: linking a product to a category also makes that product appear in the category's `productIds` list, and vice versa. You do not need to call a separate endpoint on the category side.
 
@@ -397,7 +410,7 @@ The **response** also includes read-only fields populated by the system:
 | `id`           | number        | Auto-generated.                                                                 |
 | `variants`     | Variant[]     | Size/price variants. Managed via the `/products/:productId/variants` endpoints. |
 | `colorOptions` | ColorOption[] | Color choices. Managed via the `/products/:productId/color-options` endpoints.  |
-| `tags`         | Tag[]         | Tags. Managed via the `/products/:productId/tags` endpoints.                    |
+| `tags`         | Tag[]         | Linked tags. Tag entities are managed via `/tags`; links via `/products/:productId/tags/:tagId`. |
 | `createdAt`    | string        | ISO datetime.                                                                   |
 | `updatedAt`    | string        | ISO datetime.                                                                   |
 
@@ -466,25 +479,25 @@ Validation rules for every Color object (in `colors[i]` and `defaultColor`):
 ### Tag fields
 
 ```ts
-// What you send for POST /products/:productId/tags and PUT /products/:productId/tags/:tagId
+// What you send for POST /tags and PUT /tags/:id
 type TagInput = {
   name: string; // required
-  slug: string; // required — unique within the product
+  slug: string; // required — globally unique
 };
 ```
 
-| Field  | Type   | Required | Notes                                             |
-| ------ | ------ | -------- | ------------------------------------------------- |
-| `name` | string | yes      | Display name. Trimmed before saving.              |
-| `slug` | string | yes      | Unique within the product. Trimmed before saving. |
+| Field  | Type   | Required | Notes                                       |
+| ------ | ------ | -------- | ------------------------------------------- |
+| `name` | string | yes      | Display name. Trimmed before saving.        |
+| `slug` | string | yes      | **Globally unique.** Trimmed before saving. |
 
 Validation rules:
 
 - Both fields are required and must be non-empty after trimming — `400` if missing or invalid.
-- `slug` must be unique among the product's tags — `400` with a clear message if a duplicate is attempted.
-- Returns `404` if the product does not exist, or if the tag ID does not belong to the given product.
+- `slug` must be unique across all tags — `400` with a clear message if a duplicate is attempted.
+- Returns `404` from `GET /tags/:slug`, `PUT /tags/:id`, or `DELETE /tags/:id` when no tag matches.
 
-Tags are scoped to a single product. Two different products can each have a tag with slug `"outdoor"` — the uniqueness rule only applies within one product's tag list.
+Tags are independent of products. The same tag can be linked to many products, and a product can have many tags — see the **Product-Tag relations** endpoints to manage links.
 
 ### Custom Prices fields
 

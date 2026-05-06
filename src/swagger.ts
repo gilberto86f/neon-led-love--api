@@ -42,7 +42,8 @@ export const swaggerSpec = {
     { name: "Product-Category", description: "Link and unlink products from categories" },
     { name: "Variants", description: "Size and price variants of a product" },
     { name: "Color Options", description: "Available color choices for a product" },
-    { name: "Tags", description: "Tags belonging to a product" },
+    { name: "Tags", description: "Standalone tags. Managed independently and linked to products via the Product-Tag endpoints." },
+    { name: "Product-Tag", description: "Link and unlink existing tags to/from products" },
     { name: "Prices", description: "Pricing configuration for the Custom Neon builder" },
   ],
   components: {
@@ -117,14 +118,28 @@ export const swaggerSpec = {
         description: "Numeric color option ID",
         schema: { type: "integer", minimum: 1 },
       },
-      tagProductId: {
+      tagId: {
+        name: "id",
+        in: "path",
+        required: true,
+        description: "Numeric tag ID",
+        schema: { type: "integer", minimum: 1 },
+      },
+      tagSlug: {
+        name: "slug",
+        in: "path",
+        required: true,
+        description: "URL-friendly tag identifier (e.g. `outdoor`)",
+        schema: { type: "string" },
+      },
+      productTagProductId: {
         name: "productId",
         in: "path",
         required: true,
         description: "Numeric product ID",
         schema: { type: "integer", minimum: 1 },
       },
-      tagId: {
+      productTagTagId: {
         name: "tagId",
         in: "path",
         required: true,
@@ -163,7 +178,7 @@ export const swaggerSpec = {
             type: "array",
             items: { $ref: "#/components/schemas/Tag" },
             description:
-              "Tags belonging to this product. Managed via the Tags endpoints.",
+              "Tags currently linked to this product. The Tag entities are managed via the Tags endpoints; the link is managed via the Product-Tag endpoints.",
           },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -175,7 +190,6 @@ export const swaggerSpec = {
           id: { type: "integer", example: 1 },
           name: { type: "string", example: "Outdoor" },
           slug: { type: "string", example: "outdoor" },
-          productId: { type: "integer", example: 1 },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
@@ -185,10 +199,30 @@ export const swaggerSpec = {
         required: ["name", "slug"],
         description:
           "Fields accepted when creating or updating a tag. " +
-          "`slug` must be unique per product (case-sensitive after trim).",
+          "`slug` must be globally unique (case-sensitive after trim).",
         properties: {
           name: { type: "string", example: "Outdoor" },
           slug: { type: "string", example: "outdoor" },
+        },
+      },
+      ProductWithTags: {
+        type: "object",
+        description: "A product including the IDs of its linked tags.",
+        properties: {
+          id: { type: "integer", example: 1 },
+          name: { type: "string", example: "Neon Heart" },
+          description: { type: "string", example: "Pink LED neon heart sign" },
+          slug: { type: "string", example: "neon-heart" },
+          discountType: { type: "string", nullable: true, example: "percentage" },
+          discount: { type: "integer", nullable: true, example: 10 },
+          tagIds: {
+            type: "array",
+            items: { type: "integer" },
+            example: [1, 2],
+            description: "IDs of tags this product is currently linked to.",
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
         },
       },
       Color: {
@@ -487,6 +521,16 @@ export const swaggerSpec = {
             items: { $ref: "#/components/schemas/Tag" },
           },
           total: { type: "integer", example: 4 },
+          page: { type: "integer", example: 1 },
+          perPage: { type: "integer", example: 20 },
+        },
+      },
+      ProductWithTagsResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/ProductWithTags" },
         },
       },
       CustomPrices: {
@@ -989,16 +1033,26 @@ export const swaggerSpec = {
         },
       },
     },
-    // ── Product Tags ────────────────────────────────────────────────────────
-    "/api/products/{productId}/tags": {
+    // ── Tags (standalone) ───────────────────────────────────────────────────
+    "/api/tags": {
       get: {
         tags: ["Tags"],
         summary: "List tags",
-        description: "Returns all tags for the given product, ordered by ID. Returns 404 if the product does not exist.",
-        parameters: [{ $ref: "#/components/parameters/tagProductId" }],
+        description:
+          "Returns a paginated list of all tags ordered by ID.\n\n" +
+          "Pass `search` to filter by name or slug (case-insensitive substring match).",
+        parameters: [
+          ...paginationParameters,
+          {
+            name: "search",
+            in: "query",
+            description: "Filter to tags whose name or slug contains this string (case-insensitive).",
+            schema: { type: "string" },
+          },
+        ],
         responses: {
           200: {
-            description: "Tag list",
+            description: "Paginated tag list",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/TagListResponse" },
@@ -1006,15 +1060,13 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
-          404: errorResponse,
         },
       },
       post: {
         tags: ["Tags"],
         summary: "Create tag",
         description:
-          "Adds a new tag to the given product. `name` and `slug` are required. `slug` must be unique within the product (returns 400 on duplicate).",
-        parameters: [{ $ref: "#/components/parameters/tagProductId" }],
+          "Creates a new standalone tag. `name` and `slug` are required. `slug` must be globally unique (returns 400 on duplicate).",
         requestBody: {
           required: true,
           content: {
@@ -1033,20 +1085,34 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
+        },
+      },
+    },
+    "/api/tags/{slug}": {
+      get: {
+        tags: ["Tags"],
+        summary: "Get tag by slug",
+        parameters: [{ $ref: "#/components/parameters/tagSlug" }],
+        responses: {
+          200: {
+            description: "Tag found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TagResponse" },
+              },
+            },
+          },
           404: errorResponse,
         },
       },
     },
-    "/api/products/{productId}/tags/{tagId}": {
+    "/api/tags/{id}": {
       put: {
         tags: ["Tags"],
         summary: "Update tag",
         description:
-          "Replaces all fields of an existing tag. `slug` must remain unique within the product (returns 400 on duplicate). Returns 404 if the tag does not exist or does not belong to the given product.",
-        parameters: [
-          { $ref: "#/components/parameters/tagProductId" },
-          { $ref: "#/components/parameters/tagId" },
-        ],
+          "Replaces all fields of an existing tag. `slug` must remain globally unique (returns 400 on duplicate).",
+        parameters: [{ $ref: "#/components/parameters/tagId" }],
         requestBody: {
           required: true,
           content: {
@@ -1071,17 +1137,83 @@ export const swaggerSpec = {
       delete: {
         tags: ["Tags"],
         summary: "Delete tag",
-        description: "Deletes a tag. Returns 404 if the tag does not exist or does not belong to the given product.",
-        parameters: [
-          { $ref: "#/components/parameters/tagProductId" },
-          { $ref: "#/components/parameters/tagId" },
-        ],
+        description: "Deletes a tag. The tag is also removed from any products it was linked to.",
+        parameters: [{ $ref: "#/components/parameters/tagId" }],
         responses: {
           200: {
             description: "Tag deleted",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/DeletedResponse" },
+              },
+            },
+          },
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Product-Tag relations ───────────────────────────────────────────────
+    "/api/products/{productId}/tags": {
+      get: {
+        tags: ["Product-Tag"],
+        summary: "List product tags",
+        description: "Returns all tags currently linked to the given product, ordered by ID. Returns 404 if the product does not exist.",
+        parameters: [{ $ref: "#/components/parameters/productTagProductId" }],
+        responses: {
+          200: {
+            description: "Tag list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/TagListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    "/api/products/{productId}/tags/{tagId}": {
+      post: {
+        tags: ["Product-Tag"],
+        summary: "Add tag to product",
+        description:
+          "Links an existing tag to a product. Both must exist or a 404 is returned.\n\n" +
+          "The relationship is automatically bidirectional: the tag appears in the product's `tagIds` and the product appears in the tag's linked products.\n\n" +
+          "Linking an already-linked pair is a no-op (safe to call multiple times). Tags are not created here — use `POST /api/tags` first.",
+        parameters: [
+          { $ref: "#/components/parameters/productTagProductId" },
+          { $ref: "#/components/parameters/productTagTagId" },
+        ],
+        responses: {
+          200: {
+            description: "Tag linked. Returns the updated product with its current tagIds.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductWithTagsResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      delete: {
+        tags: ["Product-Tag"],
+        summary: "Remove tag from product",
+        description:
+          "Unlinks a tag from a product. Both must exist or a 404 is returned.\n\n" +
+          "If the pair was not linked, the operation is a no-op (no error). The Tag entity is **not** deleted — only the link is removed.",
+        parameters: [
+          { $ref: "#/components/parameters/productTagProductId" },
+          { $ref: "#/components/parameters/productTagTagId" },
+        ],
+        responses: {
+          200: {
+            description: "Tag unlinked. Returns the updated product with its current tagIds.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductWithTagsResponse" },
               },
             },
           },

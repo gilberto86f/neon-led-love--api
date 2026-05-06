@@ -9,12 +9,27 @@ const parseId = (raw: string | string[]): number => {
   return id;
 };
 
+const parsePagination = (query: Request["query"]) => ({
+  page: Math.max(1, parseInt(query.page as string) || 1),
+  perPage: Math.min(100, Math.max(1, parseInt(query.perPage as string) || 20)),
+});
+
 export const tagController = {
   list: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const productId = parseId(req.params.productId);
-      const tags = await tagService.list(productId);
-      res.status(200).json(okList(tags));
+      const { page, perPage } = parsePagination(req.query);
+      const search = req.query.search ? String(req.query.search).trim() : undefined;
+      const { results, total } = await tagService.getTags({ page, perPage, search });
+      res.status(200).json(okList(results, { total, page, perPage }));
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  getBySlug: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const tag = await tagService.getTagBySlug(req.params.slug as string);
+      res.status(200).json(ok(tag));
     } catch (err) {
       next(err);
     }
@@ -22,8 +37,7 @@ export const tagController = {
 
   create: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const productId = parseId(req.params.productId);
-      const tag = await tagService.create(productId, req.body);
+      const tag = await tagService.createTag(req.body);
       res.status(201).json(ok(tag, 201));
     } catch (err) {
       next(err);
@@ -32,9 +46,8 @@ export const tagController = {
 
   update: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const productId = parseId(req.params.productId);
-      const tagId = parseId(req.params.tagId);
-      const tag = await tagService.update(productId, tagId, req.body);
+      const id = parseId(req.params.id);
+      const tag = await tagService.updateTag(id, req.body);
       res.status(200).json(ok(tag));
     } catch (err) {
       next(err);
@@ -43,10 +56,9 @@ export const tagController = {
 
   remove: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const productId = parseId(req.params.productId);
-      const tagId = parseId(req.params.tagId);
-      await tagService.remove(productId, tagId);
-      res.status(200).json(ok({ id: tagId, deleted: true }));
+      const id = parseId(req.params.id);
+      await tagService.deleteTag(id);
+      res.status(200).json(ok({ id, deleted: true }));
     } catch (err) {
       next(err);
     }
