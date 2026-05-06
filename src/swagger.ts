@@ -43,6 +43,7 @@ export const swaggerSpec = {
     { name: "Variants", description: "Size and price variants of a product" },
     { name: "Color Options", description: "Available color choices for a product" },
     { name: "Tags", description: "Tags belonging to a product" },
+    { name: "Prices", description: "Pricing configuration for the Custom Neon builder" },
   ],
   components: {
     parameters: {
@@ -486,6 +487,92 @@ export const swaggerSpec = {
             items: { $ref: "#/components/schemas/Tag" },
           },
           total: { type: "integer", example: 4 },
+        },
+      },
+      CustomPrices: {
+        type: "object",
+        description:
+          "Pricing configuration used by the Custom Neon builder to compute quotes. " +
+          "All fields are required, numeric, and may include decimals. " +
+          "The response also includes server-managed `id`, `createdAt` and `updatedAt` fields.",
+        required: [
+          "acrylicAreaMultiplier",
+          "acrylicCostPerSquareFoot",
+          "backboardColorPriceBlack",
+          "backboardColorPriceClear",
+          "backboardColorPriceGold",
+          "backboardColorPriceSilver",
+          "backboardColorPriceWhite",
+          "backboardStyleBoxMin",
+          "backboardStyleCutAround",
+          "backboardStyleCutAroundMin",
+          "backboardStyleInvisible",
+          "backboardStyleInvisibleMin",
+          "backboardStyleRectangularMin",
+          "backboardStyleStand",
+          "backboardStyleStandMin",
+          "backboardStyleStroke",
+          "backboardStyleStrokeMin",
+          "dynamicSmartLed",
+          "eliminator",
+          "fontComplexityMultiplier",
+          "fontStyleMultiplier",
+          "lowerCaseCharacters",
+          "mockUp",
+          "remoteControlPrice",
+          "signMountingKitPrice",
+          "specialCharacters",
+          "upperCaseCharacters",
+          "wallMountingKitBlack",
+          "wallMountingKitGold",
+          "wallMountingKitSilver",
+          "waterproof",
+          "waterproofMin",
+        ],
+        properties: {
+          acrylicAreaMultiplier: { type: "number", example: 1.25 },
+          acrylicCostPerSquareFoot: { type: "number", example: 8.5 },
+          backboardColorPriceBlack: { type: "number", example: 0 },
+          backboardColorPriceClear: { type: "number", example: 0 },
+          backboardColorPriceGold: { type: "number", example: 15 },
+          backboardColorPriceSilver: { type: "number", example: 12 },
+          backboardColorPriceWhite: { type: "number", example: 0 },
+          backboardStyleBoxMin: { type: "number", example: 60 },
+          backboardStyleCutAround: { type: "number", example: 1.1 },
+          backboardStyleCutAroundMin: { type: "number", example: 35 },
+          backboardStyleInvisible: { type: "number", example: 0 },
+          backboardStyleInvisibleMin: { type: "number", example: 0 },
+          backboardStyleRectangularMin: { type: "number", example: 30 },
+          backboardStyleStand: { type: "number", example: 1.05 },
+          backboardStyleStandMin: { type: "number", example: 50 },
+          backboardStyleStroke: { type: "number", example: 1.15 },
+          backboardStyleStrokeMin: { type: "number", example: 40 },
+          dynamicSmartLed: { type: "number", example: 25 },
+          eliminator: { type: "number", example: 9.99 },
+          fontComplexityMultiplier: { type: "number", example: 1.2 },
+          fontStyleMultiplier: { type: "number", example: 1.1 },
+          lowerCaseCharacters: { type: "number", example: 8 },
+          mockUp: { type: "number", example: 0 },
+          remoteControlPrice: { type: "number", example: 12 },
+          signMountingKitPrice: { type: "number", example: 7.5 },
+          specialCharacters: { type: "number", example: 12 },
+          upperCaseCharacters: { type: "number", example: 10 },
+          wallMountingKitBlack: { type: "number", example: 5 },
+          wallMountingKitGold: { type: "number", example: 8 },
+          wallMountingKitSilver: { type: "number", example: 6 },
+          waterproof: { type: "number", example: 1.2 },
+          waterproofMin: { type: "number", example: 25 },
+          id: { type: "integer", example: 1, readOnly: true },
+          createdAt: { type: "string", format: "date-time", readOnly: true },
+          updatedAt: { type: "string", format: "date-time", readOnly: true },
+        },
+      },
+      CustomPricesResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/CustomPrices" },
         },
       },
     },
@@ -1081,6 +1168,55 @@ export const swaggerSpec = {
             },
           },
           404: errorResponse,
+        },
+      },
+    },
+    // ── Prices (Custom Neon builder) ────────────────────────────────────────
+    "/api/prices/custom": {
+      get: {
+        tags: ["Prices"],
+        summary: "Get custom-neon pricing",
+        description:
+          "Returns the full pricing configuration used by the Custom Neon builder. " +
+          "There is exactly one configuration row, shared by all clients. " +
+          "If it has not been initialized yet, the server returns a row with every value defaulted to `0`.",
+        responses: {
+          200: {
+            description: "Current pricing configuration",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CustomPricesResponse" },
+              },
+            },
+          },
+        },
+      },
+      put: {
+        tags: ["Prices"],
+        summary: "Update custom-neon pricing",
+        description:
+          "Replaces the entire custom-neon pricing configuration. " +
+          "**Every** field is required and must be a finite number (decimals allowed). " +
+          "Returns `400` if any field is missing, null, or not a number. " +
+          "Partial updates are not supported — send the full payload every time.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CustomPrices" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Pricing configuration updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CustomPricesResponse" },
+              },
+            },
+          },
+          400: errorResponse,
         },
       },
     },

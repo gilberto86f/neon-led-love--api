@@ -227,6 +227,15 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 | PUT    | `/categories/:id`   | [Category](#category-fields) | Replace a category          |
 | DELETE | `/categories/:id`   | —                            | Delete a category           |
 
+**Prices (Custom Neon builder)**
+
+A single shared pricing configuration that the Custom Neon builder uses to compute quotes. There is **one** configuration for the whole site (no list, no IDs in the URL). The CMS reads it with GET and overwrites it with PUT.
+
+| Method | Path             | Body (JSON)                            | What it does                                                              |
+| ------ | ---------------- | -------------------------------------- | ------------------------------------------------------------------------- |
+| GET    | `/prices/custom` | —                                      | Get the current Custom Neon pricing config (auto-initialized to all 0 if never set) |
+| PUT    | `/prices/custom` | [CustomPrices](#custom-prices-fields)  | Replace the full Custom Neon pricing config                               |
+
 **Product-Category relations**
 
 These endpoints manage which categories a product belongs to. Both IDs must refer to existing records.
@@ -476,6 +485,67 @@ Validation rules:
 - Returns `404` if the product does not exist, or if the tag ID does not belong to the given product.
 
 Tags are scoped to a single product. Two different products can each have a tag with slug `"outdoor"` — the uniqueness rule only applies within one product's tag list.
+
+### Custom Prices fields
+
+The Custom Neon builder pulls every numeric knob it needs (per-character prices, backboard surcharges, multipliers, kit add-ons, etc.) from a single, site-wide configuration row. The CMS edits that row through these endpoints; there are no IDs and no listing — there is exactly one configuration.
+
+```ts
+// What you send for PUT /prices/custom — every field is required.
+type CustomPrices = {
+  acrylicAreaMultiplier: number;
+  acrylicCostPerSquareFoot: number;
+  backboardColorPriceBlack: number;
+  backboardColorPriceClear: number;
+  backboardColorPriceGold: number;
+  backboardColorPriceSilver: number;
+  backboardColorPriceWhite: number;
+  backboardStyleBoxMin: number;
+  backboardStyleCutAround: number;
+  backboardStyleCutAroundMin: number;
+  backboardStyleInvisible: number;
+  backboardStyleInvisibleMin: number;
+  backboardStyleRectangularMin: number;
+  backboardStyleStand: number;
+  backboardStyleStandMin: number;
+  backboardStyleStroke: number;
+  backboardStyleStrokeMin: number;
+  dynamicSmartLed: number;
+  eliminator: number;
+  fontComplexityMultiplier: number;
+  fontStyleMultiplier: number;
+  lowerCaseCharacters: number;
+  mockUp: number;
+  remoteControlPrice: number;
+  signMountingKitPrice: number;
+  specialCharacters: number;
+  upperCaseCharacters: number;
+  wallMountingKitBlack: number;
+  wallMountingKitGold: number;
+  wallMountingKitSilver: number;
+  waterproof: number;
+  waterproofMin: number;
+};
+```
+
+Validation rules:
+
+- Every one of the 32 fields is required on PUT — `400` if any is missing, `null`, or `undefined`.
+- Each value must be a **finite number** (`Infinity`, `NaN`, and strings like `"5"` are rejected with `400`).
+- Decimals are allowed and stored as double-precision floats (e.g. `1.25`, `8.5`).
+- Partial updates are not supported — always send the full payload. Omitting a field is treated as missing, not "leave unchanged".
+
+GET behavior:
+
+- `GET /prices/custom` always succeeds. If no configuration has ever been saved, the server creates one on the fly with every value defaulted to `0` and returns it — the CMS form can render immediately and the frontend never has to handle a 404.
+
+The **response** also includes server-managed read-only fields:
+
+| Field       | Type    | Notes                                                              |
+| ----------- | ------- | ------------------------------------------------------------------ |
+| `id`        | integer | Always `1` — there is exactly one row.                             |
+| `createdAt` | string  | ISO datetime — when the configuration was first initialized.       |
+| `updatedAt` | string  | ISO datetime — when the configuration was last saved (via PUT).    |
 
 ### Category fields
 
