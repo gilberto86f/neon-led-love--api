@@ -21,8 +21,8 @@ export interface Category {
 
 export type CategoryPayload = Pick<
   Category,
-  "id" | "name" | "slug" | "description" | "isActive" | "notes"
->;
+  "id" | "name" | "slug" | "description" | "isActive"
+> & { notes?: string };
 
 const withProducts = {
   include: { products: { select: { id: true } } },
@@ -57,7 +57,6 @@ const validate = (input: Partial<CategoryPayload>) => {
   requireString(input, "slug");
   requireString(input, "description");
   requireBoolean(input, "isActive");
-  requireString(input, "notes");
 };
 
 const normalize = (input: CategoryPayload) => ({
@@ -65,7 +64,7 @@ const normalize = (input: CategoryPayload) => ({
   slug: input.slug.trim(),
   description: input.description.trim(),
   isActive: input.isActive,
-  notes: input.notes.trim(),
+  notes: input.notes?.trim() ?? "",
 });
 
 export const categoryService = {

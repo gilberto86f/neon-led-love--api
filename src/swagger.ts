@@ -353,7 +353,7 @@ export const swaggerSpec = {
       },
       CategoryPayload: {
         type: "object",
-        required: ["name", "slug", "description", "isActive", "notes"],
+        required: ["name", "slug", "description", "isActive"],
         description:
           "Fields accepted when creating or updating a category. " +
           "images, tagIds, and productIds are managed by dedicated services and cannot be set here.",
@@ -365,7 +365,11 @@ export const swaggerSpec = {
             example: "Signs designed for outdoor use.",
           },
           isActive: { type: "boolean", example: true },
-          notes: { type: "string", example: "Seasonal promotion applies." },
+          notes: {
+            type: "string",
+            example: "Seasonal promotion applies.",
+            description: "Internal notes. Optional — defaults to empty string if omitted.",
+          },
         },
       },
       ProductWithCategories: {

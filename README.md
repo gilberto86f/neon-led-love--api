@@ -581,7 +581,7 @@ type CategoryPayload = {
 | `slug`        | string  | yes      | Unique. Used for public URLs.           |
 | `description` | string  | yes      | Free-form description.                  |
 | `isActive`    | boolean | yes      | Whether the category is visible/active. |
-| `notes`       | string  | yes      | Internal notes (not shown publicly).    |
+| `notes`       | string  | no       | Internal notes (not shown publicly). Defaults to `""` if omitted. |
 
 The **response** includes additional read-only fields populated by the system:
 
