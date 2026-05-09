@@ -58,7 +58,12 @@ export const slideService = {
     const where: Prisma.SlideWhereInput = {};
     if (isActive !== undefined) where.isActive = isActive;
     const [results, total] = await prisma.$transaction([
-      prisma.slide.findMany({ where, orderBy: { position: "asc" }, skip, take: perPage }),
+      prisma.slide.findMany({
+        where,
+        orderBy: { position: "asc" },
+        skip,
+        take: perPage,
+      }),
       prisma.slide.count({ where }),
     ]);
     return { results, total };
@@ -69,7 +74,9 @@ export const slideService = {
   createSlide: async (input: SlideInput) => {
     validate(input);
     const normalized = normalize(input);
-    const maxSlide = await prisma.slide.findFirst({ orderBy: { position: "desc" } });
+    const maxSlide = await prisma.slide.findFirst({
+      orderBy: { position: "desc" },
+    });
     const position = (maxSlide?.position ?? 0) + 1;
     return prisma.slide.create({ data: { ...normalized, position } });
   },
@@ -87,28 +94,55 @@ export const slideService = {
 
     const total = await prisma.slide.count();
     if (newPosition > total) {
-      throw new HttpError(400, `newPosition ${newPosition} exceeds total slides (${total})`);
+      throw new HttpError(
+        400,
+        `newPosition ${newPosition} exceeds total slides (${total})`,
+      );
     }
 
     if (oldPos === newPosition) return slide;
 
     return prisma.$transaction(async (tx) => {
-      // Move to a safe out-of-range temp position to avoid unique constraint conflicts during the shift
-      await tx.slide.update({ where: { id: slideId }, data: { position: total + 1000 } });
+      // Move to a safe out-of-range temp position to free the current slot.
+      // PostgreSQL checks @unique after EACH individual row update (non-deferrable constraint),
+      // so we must process the shift in an order where each target slot is already free.
+      await tx.slide.update({
+        where: { id: slideId },
+        data: { position: total + 1000 },
+      });
 
       if (newPosition > oldPos) {
-        await tx.slide.updateMany({
+        // Moving down: decrement [oldPos+1 … newPos].
+        // Process lowest-first so each slot is free before the next row needs it.
+        const affected = await tx.slide.findMany({
           where: { position: { gt: oldPos, lte: newPosition } },
-          data: { position: { decrement: 1 } },
+          orderBy: { position: "asc" },
         });
+        for (const s of affected) {
+          await tx.slide.update({
+            where: { id: s.id },
+            data: { position: s.position - 1 },
+          });
+        }
       } else {
-        await tx.slide.updateMany({
+        // Moving up: increment [newPos … oldPos-1].
+        // Process highest-first so each slot is free before the next row needs it.
+        const affected = await tx.slide.findMany({
           where: { position: { gte: newPosition, lt: oldPos } },
-          data: { position: { increment: 1 } },
+          orderBy: { position: "desc" },
         });
+        for (const s of affected) {
+          await tx.slide.update({
+            where: { id: s.id },
+            data: { position: s.position + 1 },
+          });
+        }
       }
 
-      return tx.slide.update({ where: { id: slideId }, data: { position: newPosition } });
+      return tx.slide.update({
+        where: { id: slideId },
+        data: { position: newPosition },
+      });
     });
   },
 };
