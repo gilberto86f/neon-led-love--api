@@ -45,6 +45,7 @@ export const swaggerSpec = {
     { name: "Tags", description: "Standalone tags. Managed independently and linked to products via the Product-Tag endpoints." },
     { name: "Product-Tag", description: "Link and unlink existing tags to/from products" },
     { name: "Prices", description: "Pricing configuration for the Custom Neon builder" },
+    { name: "Slides", description: "Homepage carousel slides. Ordered by position. Use the reorder endpoint to change order; use isActive to show/hide without deleting." },
   ],
   components: {
     parameters: {
@@ -144,6 +145,13 @@ export const swaggerSpec = {
         in: "path",
         required: true,
         description: "Numeric tag ID",
+        schema: { type: "integer", minimum: 1 },
+      },
+      slideId: {
+        name: "id",
+        in: "path",
+        required: true,
+        description: "Numeric slide ID",
         schema: { type: "integer", minimum: 1 },
       },
     },
@@ -621,6 +629,74 @@ export const swaggerSpec = {
           success: { type: "integer", enum: [1], example: 1 },
           status: { type: "integer", example: 200 },
           data: { $ref: "#/components/schemas/CustomPrices" },
+        },
+      },
+      Slide: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          isActive: { type: "boolean", example: true },
+          position: { type: "integer", example: 1, description: "1-based display order. Unique across all slides." },
+          imageUrl: { type: "string", nullable: true, example: "https://cdn.example.com/banner.jpg" },
+          styleClass: { type: "string", nullable: true, example: "hero-dark" },
+          title: { type: "string", nullable: true, example: "Custom Neon Signs" },
+          description: { type: "string", nullable: true, example: "Made to order, ships in 3 days." },
+          buttonLabel: { type: "string", nullable: true, example: "Shop Now" },
+          route: { type: "string", nullable: true, example: "/products" },
+          innerHtml: { type: "string", nullable: true, example: "<strong>Limited offer</strong>" },
+          justifyContent: { type: "string", nullable: true, example: "center" },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      SlideInput: {
+        type: "object",
+        required: ["isActive"],
+        description:
+          "Fields accepted when creating or updating a slide. `isActive` is the only required field. " +
+          "All string fields are optional and default to null if omitted or blank. " +
+          "`position` is auto-assigned on create and changed only via the reorder endpoint.",
+        properties: {
+          isActive: { type: "boolean", example: true },
+          imageUrl: { type: "string", example: "https://cdn.example.com/banner.jpg" },
+          styleClass: { type: "string", example: "hero-dark" },
+          title: { type: "string", example: "Custom Neon Signs" },
+          description: { type: "string", example: "Made to order, ships in 3 days." },
+          buttonLabel: { type: "string", example: "Shop Now" },
+          route: { type: "string", example: "/products" },
+          innerHtml: { type: "string", example: "<strong>Limited offer</strong>" },
+          justifyContent: { type: "string", example: "center" },
+        },
+      },
+      SlideReorderInput: {
+        type: "object",
+        required: ["slideId", "newPosition"],
+        description: "Moves a slide to a new position, shifting other slides to keep positions sequential and unique.",
+        properties: {
+          slideId: { type: "integer", example: 3, description: "ID of the slide to move." },
+          newPosition: { type: "integer", example: 1, description: "Target position (1-based). Must be between 1 and the total number of slides." },
+        },
+      },
+      SlideResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/Slide" },
+        },
+      },
+      SlideListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: {
+            type: "array",
+            items: { $ref: "#/components/schemas/Slide" },
+          },
+          total: { type: "integer", example: 5 },
+          page: { type: "integer", example: 1 },
+          perPage: { type: "integer", example: 20 },
         },
       },
     },
@@ -1353,6 +1429,137 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
+        },
+      },
+    },
+    // ── Slides ──────────────────────────────────────────────────────────────
+    "/api/slides": {
+      get: {
+        tags: ["Slides"],
+        summary: "List slides",
+        description:
+          "Returns slides ordered by `position` ascending.\n\n" +
+          "Pass `isActive=true` to get only active slides, `isActive=false` for inactive only, or omit it to get all.",
+        parameters: [
+          ...paginationParameters,
+          {
+            name: "isActive",
+            in: "query",
+            description: "Filter by active state. Omit to return all slides.",
+            schema: { type: "boolean" },
+          },
+        ],
+        responses: {
+          200: {
+            description: "Slide list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SlideListResponse" },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ["Slides"],
+        summary: "Create slide",
+        description:
+          "Creates a new slide. `isActive` is the only required field. " +
+          "The slide is appended at the end (highest position + 1). Use the reorder endpoint to change its position.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/SlideInput" },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Slide created",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SlideResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
+    "/api/slides/reorder": {
+      put: {
+        tags: ["Slides"],
+        summary: "Reorder slide",
+        description:
+          "Moves a slide to a new position. All slides between the old and new position are shifted by one to keep positions sequential and unique.\n\n" +
+          "`newPosition` must be between 1 and the total number of slides.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/SlideReorderInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Slide moved. Returns the updated slide.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SlideResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    "/api/slides/{id}": {
+      get: {
+        tags: ["Slides"],
+        summary: "Get slide by ID",
+        parameters: [{ $ref: "#/components/parameters/slideId" }],
+        responses: {
+          200: {
+            description: "Slide found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SlideResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      put: {
+        tags: ["Slides"],
+        summary: "Update slide",
+        description:
+          "Updates a slide's content and active state. `isActive` is required. " +
+          "To change position, use the reorder endpoint instead.",
+        parameters: [{ $ref: "#/components/parameters/slideId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/SlideInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Slide updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/SlideResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
         },
       },
     },

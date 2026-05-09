@@ -316,6 +316,29 @@ The response returns the updated product with a `categoryIds` field showing its 
 }
 ```
 
+**Slides**
+
+Slides power the homepage carousel. Each slide has a unique `position` that controls its display order. There is no hard delete — set `isActive: false` to hide a slide.
+
+| Method | Path                  | Body (JSON)                      | What it does                          |
+| ------ | --------------------- | -------------------------------- | ------------------------------------- |
+| GET    | `/slides`             | —                                | List slides (ordered by position)     |
+| GET    | `/slides/:id`         | —                                | Get one slide by ID                   |
+| POST   | `/slides`             | [Slide](#slide-fields)           | Create a slide (appended at the end)  |
+| PUT    | `/slides/:id`         | [Slide](#slide-fields)           | Update a slide's content/active state |
+| PUT    | `/slides/reorder`     | `{ slideId, newPosition }`       | Move a slide to a new position        |
+
+`GET /slides?isActive=true` returns only active slides; `isActive=false` returns only inactive ones; omit the param to get all.
+
+The reorder endpoint shifts all affected slides so positions stay sequential and unique. Example:
+
+```json
+PUT /api/slides/reorder
+{ "slideId": 3, "newPosition": 1 }
+```
+
+This moves slide 3 to position 1 and pushes the other slides down by one.
+
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 
 ### Pagination
@@ -593,6 +616,44 @@ The **response** includes additional read-only fields populated by the system:
 | `productIds` | number[] | IDs of linked products. Managed via `POST/DELETE /products/:productId/categories/:categoryId`. |
 | `createdAt`  | string   | ISO datetime.                                                                                  |
 | `updatedAt`  | string   | ISO datetime.                                                                                  |
+
+### Slide fields
+
+```ts
+// What you send for POST /slides and PUT /slides/:id
+type SlideInput = {
+  isActive: boolean; // required — true to show, false to hide
+  imageUrl?: string; // optional — URL of the slide image
+  styleClass?: string; // optional — CSS class applied to the slide container
+  title?: string; // optional — headline text
+  description?: string; // optional — body/subtitle text
+  buttonLabel?: string; // optional — label for the CTA button
+  route?: string; // optional — router link or URL for the CTA button
+  innerHtml?: string; // optional — raw HTML injected into the slide
+  justifyContent?: string; // optional — CSS flex justification (e.g. "center")
+};
+```
+
+| Field           | Type    | Required | Notes                                                        |
+| --------------- | ------- | -------- | ------------------------------------------------------------ |
+| `isActive`      | boolean | yes      | Controls visibility. Set to `false` instead of deleting.     |
+| `imageUrl`      | string  | no       | URL of the background image. Defaults to `null`.             |
+| `styleClass`    | string  | no       | CSS class for custom styling. Defaults to `null`.            |
+| `title`         | string  | no       | Main headline. Defaults to `null`.                           |
+| `description`   | string  | no       | Subtitle or body text. Defaults to `null`.                   |
+| `buttonLabel`   | string  | no       | CTA button text. Defaults to `null`.                         |
+| `route`         | string  | no       | CTA link target (Angular route or absolute URL). Defaults to `null`. |
+| `innerHtml`     | string  | no       | Raw HTML injected into the slide. Defaults to `null`.        |
+| `justifyContent`| string  | no       | CSS `justify-content` value (e.g. `"center"`). Defaults to `null`. |
+
+The response also includes server-managed fields:
+
+| Field       | Type   | Notes                                                               |
+| ----------- | ------ | ------------------------------------------------------------------- |
+| `id`        | number | Auto-generated.                                                     |
+| `position`  | number | 1-based display order. Auto-assigned on create. Change via reorder. |
+| `createdAt` | string | ISO datetime.                                                       |
+| `updatedAt` | string | ISO datetime.                                                       |
 
 ### 7.1. curl examples (works in PowerShell)
 
