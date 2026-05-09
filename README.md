@@ -27,7 +27,7 @@ Backend API for an e-commerce site that sells LED neon signs. This document is w
 
 A small REST API that exposes endpoints to **list, create, read, update, and delete products** (the LED neon signs). Your Angular app will call these endpoints over HTTP to display products, manage them in an admin panel, etc.
 
-This is an **MVP** (Minimum Viable Product) — the smallest possible version that works end-to-end so you can plug in the frontend and start iterating. No authentication, no image uploads yet — those come later.
+This is an **MVP** (Minimum Viable Product) — the smallest possible version that works end-to-end so you can plug in the frontend and start iterating. No authentication yet.
 
 ---
 
@@ -338,6 +338,42 @@ PUT /api/slides/reorder
 ```
 
 This moves slide 3 to position 1 and pushes the other slides down by one.
+
+**Images**
+
+Handles file uploads for all parts of the app. Files are saved to disk under `/uploads/{type}/` and served as static assets — no external storage needed.
+
+| Method | Path                        | Body / Query                   | What it does              |
+| ------ | --------------------------- | ------------------------------ | ------------------------- |
+| POST   | `/images/upload/:type`      | `multipart/form-data` (field: `file`) | Upload a file      |
+| DELETE | `/images?imageUrl=...`      | —                              | Delete an uploaded file   |
+
+**Valid types:** `products`, `quotes`, `categories`, `slides`
+
+**Accepted formats:** png, jpeg, jpg, gif, pdf, ai
+
+**Maximum file size:** 20 MB
+
+The upload response returns an `imageUrl` you can store and use in other resources (e.g. a slide's `imageUrl` field):
+
+```json
+POST /api/images/upload/products
+→ { "success": 1, "status": 201, "data": { "imageUrl": "/uploads/products/1715000000000-ab3c7d1-neon-sign.png" } }
+```
+
+That URL is immediately accessible in the browser:
+
+```
+http://localhost:3000/uploads/products/1715000000000-ab3c7d1-neon-sign.png
+```
+
+To delete a file, pass `imageUrl` exactly as returned by the upload endpoint:
+
+```
+DELETE /api/images?imageUrl=/uploads/products/1715000000000-ab3c7d1-neon-sign.png
+```
+
+Uploaded files are stored in `uploads/` at the project root and are **not committed to git** (the folder is in `.gitignore`). The folder is created automatically on first upload.
 
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 

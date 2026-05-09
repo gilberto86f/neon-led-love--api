@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
@@ -10,6 +11,7 @@ export const createApp = () => {
 
   app.use(cors());
   app.use(express.json());
+  app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   app.get('/health', (_req, res) => {
     res.status(200).json({ success: 1, status: 200, data: { ok: true } });

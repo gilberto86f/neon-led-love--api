@@ -46,6 +46,7 @@ export const swaggerSpec = {
     { name: "Product-Tag", description: "Link and unlink existing tags to/from products" },
     { name: "Prices", description: "Pricing configuration for the Custom Neon builder" },
     { name: "Slides", description: "Homepage carousel slides. Ordered by position. Use the reorder endpoint to change order; use isActive to show/hide without deleting." },
+    { name: "Images", description: "File upload and deletion. Uploaded files are served as static assets under /uploads/." },
   ],
   components: {
     parameters: {
@@ -153,6 +154,13 @@ export const swaggerSpec = {
         required: true,
         description: "Numeric slide ID",
         schema: { type: "integer", minimum: 1 },
+      },
+      uploadType: {
+        name: "type",
+        in: "path",
+        required: true,
+        description: "Upload context. Determines the storage folder.",
+        schema: { type: "string", enum: ["products", "quotes", "categories", "slides"] },
       },
     },
     schemas: {
@@ -697,6 +705,37 @@ export const swaggerSpec = {
           total: { type: "integer", example: 5 },
           page: { type: "integer", example: 1 },
           perPage: { type: "integer", example: 20 },
+        },
+      },
+      ImageUploadResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 201 },
+          data: {
+            type: "object",
+            properties: {
+              imageUrl: {
+                type: "string",
+                example: "/uploads/products/1715000000000-ab3c7d1-neon-sign.png",
+                description: "Relative URL of the uploaded file. Accessible at http://localhost:3000{imageUrl}.",
+              },
+            },
+          },
+        },
+      },
+      ImageDeleteResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: {
+            type: "object",
+            properties: {
+              deleted: { type: "boolean", example: true },
+              imageUrl: { type: "string", example: "/uploads/products/1715000000000-ab3c7d1-neon-sign.png" },
+            },
+          },
         },
       },
     },
@@ -1429,6 +1468,81 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
+        },
+      },
+    },
+    // ── Images ──────────────────────────────────────────────────────────────
+    "/api/images/upload/{type}": {
+      post: {
+        tags: ["Images"],
+        summary: "Upload a file",
+        description:
+          "Uploads a single file and stores it under `/uploads/{type}/`. " +
+          "Returns the relative URL of the saved file.\n\n" +
+          "**Allowed types:** `products`, `quotes`, `categories`, `slides`\n\n" +
+          "**Allowed file formats:** png, jpeg, jpg, gif, pdf, ai\n\n" +
+          "**Maximum file size:** 20 MB\n\n" +
+          "Send the file as `multipart/form-data` with the field name `file`.\n\n" +
+          "The returned `imageUrl` is accessible at `http://localhost:3000{imageUrl}`.",
+        parameters: [{ $ref: "#/components/parameters/uploadType" }],
+        requestBody: {
+          required: true,
+          content: {
+            "multipart/form-data": {
+              schema: {
+                type: "object",
+                required: ["file"],
+                properties: {
+                  file: {
+                    type: "string",
+                    format: "binary",
+                    description: "The file to upload.",
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "File uploaded",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ImageUploadResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
+    "/api/images": {
+      delete: {
+        tags: ["Images"],
+        summary: "Delete a file",
+        description:
+          "Deletes a previously uploaded file from disk. " +
+          "Pass the `imageUrl` exactly as returned by the upload endpoint (e.g. `/uploads/products/filename.png`).",
+        parameters: [
+          {
+            name: "imageUrl",
+            in: "query",
+            required: true,
+            description: "Relative URL of the file to delete, as returned by the upload endpoint.",
+            schema: { type: "string", example: "/uploads/products/1715000000000-ab3c7d1-neon-sign.png" },
+          },
+        ],
+        responses: {
+          200: {
+            description: "File deleted",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ImageDeleteResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
         },
       },
     },

@@ -4,6 +4,7 @@ import categoryRoutes from './category.routes';
 import pricesRoutes from './prices.routes';
 import tagRoutes from './tag.routes';
 import slideRoutes from './slide.routes';
+import imageRoutes from './image.routes';
 
 const router = Router();
 
@@ -12,5 +13,6 @@ router.use('/categories', categoryRoutes);
 router.use('/tags', tagRoutes);
 router.use('/prices', pricesRoutes);
 router.use('/slides', slideRoutes);
+router.use('/images', imageRoutes);
 
 export default router;
