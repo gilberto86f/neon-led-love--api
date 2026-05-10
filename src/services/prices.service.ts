@@ -9,11 +9,13 @@ export interface CustomPrices {
   backboardColorPriceGold: number;
   backboardColorPriceSilver: number;
   backboardColorPriceWhite: number;
+  backboardStyleBox: number;
   backboardStyleBoxMin: number;
   backboardStyleCutAround: number;
   backboardStyleCutAroundMin: number;
   backboardStyleInvisible: number;
   backboardStyleInvisibleMin: number;
+  backboardStyleRectangular: number;
   backboardStyleRectangularMin: number;
   backboardStyleStand: number;
   backboardStyleStandMin: number;
@@ -44,11 +46,13 @@ const CUSTOM_PRICE_FIELDS = [
   "backboardColorPriceGold",
   "backboardColorPriceSilver",
   "backboardColorPriceWhite",
+  "backboardStyleBox",
   "backboardStyleBoxMin",
   "backboardStyleCutAround",
   "backboardStyleCutAroundMin",
   "backboardStyleInvisible",
   "backboardStyleInvisibleMin",
+  "backboardStyleRectangular",
   "backboardStyleRectangularMin",
   "backboardStyleStand",
   "backboardStyleStandMin",
