@@ -172,6 +172,17 @@ export const swaggerSpec = {
           name: { type: "string", example: "Neon Heart" },
           description: { type: "string", example: "Pink LED neon heart sign" },
           slug: { type: "string", example: "neon-heart" },
+          images: {
+            type: "array",
+            items: { type: "string" },
+            example: [
+              "/uploads/products/1778311202127-hdjrg5c-bulbasaur.jpg",
+              "/uploads/products/1778311648058-h2znywa-bulbasaur.png",
+            ],
+            description:
+              "Image URLs for this product. Array order is the display order. " +
+              "Upload files via POST /api/images/upload/products to obtain the URLs.",
+          },
           discountType: {
             type: "string",
             nullable: true,
@@ -229,6 +240,14 @@ export const swaggerSpec = {
           name: { type: "string", example: "Neon Heart" },
           description: { type: "string", example: "Pink LED neon heart sign" },
           slug: { type: "string", example: "neon-heart" },
+          images: {
+            type: "array",
+            items: { type: "string" },
+            example: [
+              "/uploads/products/1778311202127-hdjrg5c-bulbasaur.jpg",
+              "/uploads/products/1778311648058-h2znywa-bulbasaur.png",
+            ],
+          },
           discountType: { type: "string", nullable: true, example: "percentage" },
           discount: { type: "integer", nullable: true, example: 10 },
           tagIds: {
@@ -320,6 +339,20 @@ export const swaggerSpec = {
             example: "neon-heart",
             description:
               "Unique URL-friendly identifier. Trimmed before saving.",
+          },
+          images: {
+            type: "array",
+            items: { type: "string" },
+            example: [
+              "/uploads/products/1778311202127-hdjrg5c-bulbasaur.jpg",
+              "/uploads/products/1778311648058-h2znywa-bulbasaur.png",
+            ],
+            description:
+              "Ordered list of image URLs for the product. The array order is the display order; " +
+              "to add, remove, or reorder, send the full updated array. " +
+              "Upload files via POST /api/images/upload/products to obtain URLs. " +
+              "Removing a URL here does not delete the underlying file — call DELETE /api/images separately if you want to free disk space. " +
+              "Optional; defaults to [] when omitted.",
           },
           discountType: {
             type: "string",

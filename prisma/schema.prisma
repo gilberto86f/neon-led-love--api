@@ -12,6 +12,7 @@ model Product {
   name         String
   description  String
   slug         String           @unique
+  images       String[]
   discountType String?
   discount     Int?
   createdAt    DateTime         @default(now())

@@ -6,6 +6,7 @@ export interface Product {
   name: string;
   description: string;
   slug: string;
+  images?: string[];
   discountType?: string;
   discount?: number;
 }
@@ -33,18 +34,36 @@ const optionalNumber = (input: Partial<ProductInput>, field: keyof Product) => {
   }
 };
 
+const optionalImages = (input: Partial<ProductInput>) => {
+  const value = input.images;
+  if (value === undefined || value === null) return;
+  if (!Array.isArray(value)) {
+    throw new HttpError(400, `Field must be an array of strings: "images"`);
+  }
+  for (const url of value) {
+    if (typeof url !== "string" || !url.trim()) {
+      throw new HttpError(400, `Field "images" must contain non-empty strings`);
+    }
+  }
+  if (new Set(value.map((u) => u.trim())).size !== value.length) {
+    throw new HttpError(400, `Field "images" must not contain duplicates`);
+  }
+};
+
 const validate = (input: Partial<ProductInput>) => {
   requireString(input, "name");
   requireString(input, "description");
   requireString(input, "slug");
   optionalString(input, "discountType");
   optionalNumber(input, "discount");
+  optionalImages(input);
 };
 
 const normalize = (input: ProductInput) => ({
   name: input.name.trim(),
   description: input.description.trim(),
   slug: input.slug.trim(),
+  images: input.images?.map((u) => u.trim()) ?? [],
   discountType: input.discountType?.trim() || null,
   discount: input.discount ?? null,
 });

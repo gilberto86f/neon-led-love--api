@@ -447,20 +447,37 @@ type ProductInput = {
   name: string; // required
   description: string; // required
   slug: string; // required — unique, URL-friendly identifier
+  images?: string[]; // optional — ordered list of image URLs; defaults to []
   discountType?: string; // optional — e.g. "percentage" or "fixed"
   discount?: number; // optional — e.g. 10 or 5
 };
 ```
 
-| Field          | Type   | Required | Notes                                               |
-| -------------- | ------ | -------- | --------------------------------------------------- |
-| `name`         | string | yes      | Product display name.                               |
-| `description`  | string | yes      | Free-form description.                              |
-| `slug`         | string | yes      | Unique. Used for public URLs. `neon-heart-xl`, etc. |
-| `discountType` | string | no       | Free-form tag (`percentage`, `fixed`, …).           |
-| `discount`     | number | no       | Integer discount value (e.g. `10` for 10%).         |
+| Field          | Type     | Required | Notes                                                                                          |
+| -------------- | -------- | -------- | ---------------------------------------------------------------------------------------------- |
+| `name`         | string   | yes      | Product display name.                                                                          |
+| `description`  | string   | yes      | Free-form description.                                                                         |
+| `slug`         | string   | yes      | Unique. Used for public URLs. `neon-heart-xl`, etc.                                            |
+| `images`       | string[] | no       | Ordered list of image URLs. The array order is the display order. Defaults to `[]` if omitted. |
+| `discountType` | string   | no       | Free-form tag (`percentage`, `fixed`, …).                                                      |
+| `discount`     | number   | no       | Integer discount value (e.g. `10` for 10%).                                                    |
 
 The server rejects a create/update request with `400` if any required field is missing, empty, or whitespace. Strings are trimmed before saving.
+
+#### Managing product images
+
+Product images use the existing upload system — there are no dedicated add/remove/reorder endpoints. The flow is:
+
+1. **Upload** a file via `POST /api/images/upload/products` (multipart `file` field). The response contains `imageUrl`, e.g. `/uploads/products/1778311202127-hdjrg5c-bulbasaur.jpg`.
+2. **Attach** it by sending the product's full `images` array (with the new URL appended in the desired position) in `PUT /products/:id`.
+3. **Reorder** by sending the same URLs in a new order in `PUT /products/:id`.
+4. **Detach** by sending the product's `images` array without that URL in `PUT /products/:id`. This only unlinks it from the product — the underlying file stays on disk. If you also want to delete the file, call `DELETE /api/images?imageUrl=...` separately.
+
+Validation rules:
+
+- `images` must be an array of non-empty strings.
+- Duplicates within the same array are rejected with `400`.
+- Each entry is trimmed before saving.
 
 The **response** also includes read-only fields populated by the system:
 
