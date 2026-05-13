@@ -8,6 +8,7 @@ import { productTagController } from '../controllers/productTag.controller';
 const router = Router();
 
 router.get('/', productController.list);
+router.get('/:productId/related', productController.getRelated);
 router.get('/:slug', productController.getBySlug);
 router.post('/', productController.create);
 router.put('/:id', productController.update);

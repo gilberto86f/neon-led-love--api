@@ -209,13 +209,14 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 
 **Products**
 
-| Method | Path              | Body (JSON)                | What it does              |
-| ------ | ----------------- | -------------------------- | ------------------------- |
-| GET    | `/products`       | —                          | List products (paginated) |
-| GET    | `/products/:slug` | —                          | Get one product by slug   |
-| POST   | `/products`       | [Product](#product-fields) | Create a new product      |
-| PUT    | `/products/:id`   | [Product](#product-fields) | Replace a product         |
-| DELETE | `/products/:id`   | —                          | Delete a product          |
+| Method | Path                              | Body (JSON)                | What it does                                                    |
+| ------ | --------------------------------- | -------------------------- | --------------------------------------------------------------- |
+| GET    | `/products`                       | —                          | List products (paginated)                                       |
+| GET    | `/products/:slug`                 | —                          | Get one product by slug                                         |
+| GET    | `/products/:productId/related`    | —                          | Get related products (see [Related products](#related-products)) |
+| POST   | `/products`                       | [Product](#product-fields) | Create a new product                                            |
+| PUT    | `/products/:id`                   | [Product](#product-fields) | Replace a product                                               |
+| DELETE | `/products/:id`                   | —                          | Delete a product                                                |
 
 **Categories**
 
@@ -489,6 +490,41 @@ The **response** also includes read-only fields populated by the system:
 | `tags`         | Tag[]         | Linked tags. Tag entities are managed via `/tags`; links via `/products/:productId/tags/:tagId`. |
 | `createdAt`    | string        | ISO datetime.                                                                   |
 | `updatedAt`    | string        | ISO datetime.                                                                   |
+
+#### Related products
+
+`GET /products/:productId/related` returns a list of products related to the given one, ordered by relevance. It powers the "you might also like" surface in the storefront.
+
+How relevance is computed:
+
+| Signal                                          | Weight |
+| ----------------------------------------------- | ------ |
+| Each shared **category** with the source product | +5     |
+| Each shared **tag** with the source product      | +3     |
+| Each shared **keyword** in `name` + `description` (case-insensitive, tokens of length ≥ 3) | +1     |
+
+Behavior:
+
+- Only products that share at least one category or tag with the source are scored — text similarity alone is not enough to be a "related" match. This keeps the comparison cheap.
+- Results are sorted by score (descending), ties broken by product ID (ascending) for deterministic output.
+- If fewer than `limit` related products are found, the remaining slots are filled with **random products** (excluding the source and any product already in the list).
+- The source product is always excluded from the result.
+
+Query params:
+
+| Param   | Type   | Default | Notes                                                |
+| ------- | ------ | ------- | ---------------------------------------------------- |
+| `limit` | number | `8`     | Maximum number of products to return. 1 ≤ limit ≤ 100. |
+
+Response shape: a non-paginated list (`results: Product[]`, `total: number`). Each entry has the same shape as a product returned by `GET /products` (includes `variants`, `colorOptions`, `tags`).
+
+Example:
+
+```
+GET /api/products/12/related?limit=8
+```
+
+If product 12 has 5 truly related products in the catalog, the response contains those 5 (ranked by score) followed by 3 random products to reach the limit.
 
 ### Variant fields
 

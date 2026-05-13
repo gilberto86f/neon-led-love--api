@@ -71,4 +71,21 @@ export const productController = {
       next(err);
     }
   },
+
+  getRelated: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const productId = parseId(req.params.productId);
+      let limit: number | undefined;
+      if (req.query.limit !== undefined) {
+        limit = Number(req.query.limit);
+        if (!Number.isInteger(limit) || limit <= 0 || limit > 100) {
+          throw new HttpError(400, "Invalid limit (must be a positive integer ≤ 100)");
+        }
+      }
+      const results = await productService.getRelatedProducts(productId, limit);
+      res.status(200).json(okList(results));
+    } catch (err) {
+      next(err);
+    }
+  },
 };

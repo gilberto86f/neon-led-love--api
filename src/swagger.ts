@@ -936,6 +936,40 @@ export const swaggerSpec = {
         },
       },
     },
+    "/api/products/{productId}/related": {
+      get: {
+        tags: ["Products"],
+        summary: "Get related products",
+        description:
+          "Returns products related to the given product, ordered by relevance.\n\n" +
+          "Scoring weights: **+5** per shared category, **+3** per shared tag, **+1** per shared keyword in name/description " +
+          "(case-insensitive, tokens of length ≥ 3). Only candidates that share at least one category or tag with the " +
+          "source product are scored.\n\n" +
+          "If fewer than `limit` related products are found, the remaining slots are filled with random products " +
+          "(excluding the source product and any already-included results). The list is **not** paginated.",
+        parameters: [
+          { $ref: "#/components/parameters/relationProductId" },
+          {
+            name: "limit",
+            in: "query",
+            description: "Maximum number of products to return. Defaults to 8. Must be a positive integer ≤ 100.",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 8 },
+          },
+        ],
+        responses: {
+          200: {
+            description: "Related products list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
     // ── Product-Category relations ──────────────────────────────────────────
     "/api/products/{productId}/categories/{categoryId}": {
       post: {
