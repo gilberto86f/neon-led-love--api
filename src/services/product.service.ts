@@ -155,7 +155,19 @@ export const productService = {
     await prisma.product.delete({ where: { id } });
   },
 
-  getRelatedProducts: async (productId: number, limit: number = RELATED_DEFAULT_LIMIT) => {
+  getRelatedProducts: async (productId: number | undefined, limit: number = RELATED_DEFAULT_LIMIT) => {
+    if (productId === undefined) {
+      const pool = await prisma.product.findMany({ select: { id: true } });
+      const pickedIds = shuffle(pool.map((p) => p.id)).slice(0, limit);
+      if (!pickedIds.length) return [];
+      const products = await prisma.product.findMany({
+        where: { id: { in: pickedIds } },
+        include: { variants: true, colorOptions: true, tags: true },
+      });
+      const byId = new Map(products.map((p) => [p.id, p]));
+      return pickedIds.map((id) => byId.get(id)!).filter(Boolean);
+    }
+
     const source = await prisma.product.findUnique({
       where: { id: productId },
       include: {

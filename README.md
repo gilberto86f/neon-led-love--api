@@ -213,6 +213,7 @@ The API base URL is `http://localhost:3000/api`. All product endpoints live unde
 | ------ | --------------------------------- | -------------------------- | --------------------------------------------------------------- |
 | GET    | `/products`                       | —                          | List products (paginated)                                       |
 | GET    | `/products/:slug`                 | —                          | Get one product by slug                                         |
+| GET    | `/products/related`               | —                          | Get random products (no source product)                          |
 | GET    | `/products/:productId/related`    | —                          | Get related products (see [Related products](#related-products)) |
 | POST   | `/products`                       | [Product](#product-fields) | Create a new product                                            |
 | PUT    | `/products/:id`                   | [Product](#product-fields) | Replace a product                                               |
@@ -494,6 +495,8 @@ The **response** also includes read-only fields populated by the system:
 #### Related products
 
 `GET /products/:productId/related` returns a list of products related to the given one, ordered by relevance. It powers the "you might also like" surface in the storefront.
+
+`GET /products/related` (no productId) returns random products — useful for generic discovery surfaces like a homepage "explore" section where there is no source product.
 
 How relevance is computed:
 

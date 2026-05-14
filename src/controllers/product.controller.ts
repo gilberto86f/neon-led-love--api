@@ -74,7 +74,7 @@ export const productController = {
 
   getRelated: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const productId = parseId(req.params.productId);
+      const productId = req.params.productId !== undefined ? parseId(req.params.productId) : undefined;
       let limit: number | undefined;
       if (req.query.limit !== undefined) {
         limit = Number(req.query.limit);

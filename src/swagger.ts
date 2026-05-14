@@ -39,14 +39,38 @@ export const swaggerSpec = {
     { name: "Health", description: "Server health check" },
     { name: "Products", description: "LED neon sign products" },
     { name: "Categories", description: "Product categories" },
-    { name: "Product-Category", description: "Link and unlink products from categories" },
+    {
+      name: "Product-Category",
+      description: "Link and unlink products from categories",
+    },
     { name: "Variants", description: "Size and price variants of a product" },
-    { name: "Color Options", description: "Available color choices for a product" },
-    { name: "Tags", description: "Standalone tags. Managed independently and linked to products via the Product-Tag endpoints." },
-    { name: "Product-Tag", description: "Link and unlink existing tags to/from products" },
-    { name: "Prices", description: "Pricing configuration for the Custom Neon builder" },
-    { name: "Slides", description: "Homepage carousel slides. Ordered by position. Use the reorder endpoint to change order; use isActive to show/hide without deleting." },
-    { name: "Images", description: "File upload and deletion. Uploaded files are served as static assets under /uploads/." },
+    {
+      name: "Color Options",
+      description: "Available color choices for a product",
+    },
+    {
+      name: "Tags",
+      description:
+        "Standalone tags. Managed independently and linked to products via the Product-Tag endpoints.",
+    },
+    {
+      name: "Product-Tag",
+      description: "Link and unlink existing tags to/from products",
+    },
+    {
+      name: "Prices",
+      description: "Pricing configuration for the Custom Neon builder",
+    },
+    {
+      name: "Slides",
+      description:
+        "Homepage carousel slides. Ordered by position. Use the reorder endpoint to change order; use isActive to show/hide without deleting.",
+    },
+    {
+      name: "Images",
+      description:
+        "File upload and deletion. Uploaded files are served as static assets under /uploads/.",
+    },
   ],
   components: {
     parameters: {
@@ -160,7 +184,10 @@ export const swaggerSpec = {
         in: "path",
         required: true,
         description: "Upload context. Determines the storage folder.",
-        schema: { type: "string", enum: ["products", "quotes", "categories", "slides"] },
+        schema: {
+          type: "string",
+          enum: ["products", "quotes", "categories", "slides"],
+        },
       },
     },
     schemas: {
@@ -248,7 +275,11 @@ export const swaggerSpec = {
               "/uploads/products/1778311648058-h2znywa-bulbasaur.png",
             ],
           },
-          discountType: { type: "string", nullable: true, example: "percentage" },
+          discountType: {
+            type: "string",
+            nullable: true,
+            example: "percentage",
+          },
           discount: { type: "integer", nullable: true, example: 10 },
           tagIds: {
             type: "array",
@@ -322,7 +353,11 @@ export const swaggerSpec = {
           "Fields accepted when creating or updating a variant. " +
           "All four are required and must be positive numbers; `sizeUnit` must be `cm` or `inch`.",
         properties: {
-          price: { type: "number", example: 29.99, description: "Must be > 0." },
+          price: {
+            type: "number",
+            example: 29.99,
+            description: "Must be > 0.",
+          },
           width: { type: "number", example: 30, description: "Must be > 0." },
           height: { type: "number", example: 15, description: "Must be > 0." },
           sizeUnit: { type: "string", enum: ["cm", "inch"], example: "cm" },
@@ -386,7 +421,8 @@ export const swaggerSpec = {
             type: "array",
             items: { type: "integer" },
             example: [1, 2],
-            description: "IDs of tags linked to this category. Managed by the Tag service (not yet implemented).",
+            description:
+              "IDs of tags linked to this category. Managed by the Tag service (not yet implemented).",
           },
           isActive: { type: "boolean", example: true },
           notes: { type: "string", example: "Seasonal promotion applies." },
@@ -394,7 +430,8 @@ export const swaggerSpec = {
             type: "array",
             items: { type: "integer" },
             example: [1, 2, 3],
-            description: "IDs of products linked to this category. Managed by the Product-Category relation service (not yet implemented).",
+            description:
+              "IDs of products linked to this category. Managed by the Product-Category relation service (not yet implemented).",
           },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -417,7 +454,8 @@ export const swaggerSpec = {
           notes: {
             type: "string",
             example: "Seasonal promotion applies.",
-            description: "Internal notes. Optional — defaults to empty string if omitted.",
+            description:
+              "Internal notes. Optional — defaults to empty string if omitted.",
           },
         },
       },
@@ -429,13 +467,18 @@ export const swaggerSpec = {
           name: { type: "string", example: "Neon Heart" },
           description: { type: "string", example: "Pink LED neon heart sign" },
           slug: { type: "string", example: "neon-heart" },
-          discountType: { type: "string", nullable: true, example: "percentage" },
+          discountType: {
+            type: "string",
+            nullable: true,
+            example: "percentage",
+          },
           discount: { type: "integer", nullable: true, example: 10 },
           categoryIds: {
             type: "array",
             items: { type: "integer" },
             example: [1, 2],
-            description: "IDs of categories this product is currently linked to.",
+            description:
+              "IDs of categories this product is currently linked to.",
           },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -681,14 +724,34 @@ export const swaggerSpec = {
         properties: {
           id: { type: "integer", example: 1 },
           isActive: { type: "boolean", example: true },
-          position: { type: "integer", example: 1, description: "1-based display order. Unique across all slides." },
-          imageUrl: { type: "string", nullable: true, example: "https://cdn.example.com/banner.jpg" },
+          position: {
+            type: "integer",
+            example: 1,
+            description: "1-based display order. Unique across all slides.",
+          },
+          imageUrl: {
+            type: "string",
+            nullable: true,
+            example: "https://cdn.example.com/banner.jpg",
+          },
           styleClass: { type: "string", nullable: true, example: "hero-dark" },
-          title: { type: "string", nullable: true, example: "Custom Neon Signs" },
-          description: { type: "string", nullable: true, example: "Made to order, ships in 3 days." },
+          title: {
+            type: "string",
+            nullable: true,
+            example: "Custom Neon Signs",
+          },
+          description: {
+            type: "string",
+            nullable: true,
+            example: "Made to order, ships in 3 days.",
+          },
           buttonLabel: { type: "string", nullable: true, example: "Shop Now" },
           route: { type: "string", nullable: true, example: "/products" },
-          innerHtml: { type: "string", nullable: true, example: "<strong>Limited offer</strong>" },
+          innerHtml: {
+            type: "string",
+            nullable: true,
+            example: "<strong>Limited offer</strong>",
+          },
           justifyContent: { type: "string", nullable: true, example: "center" },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -703,23 +766,42 @@ export const swaggerSpec = {
           "`position` is auto-assigned on create and changed only via the reorder endpoint.",
         properties: {
           isActive: { type: "boolean", example: true },
-          imageUrl: { type: "string", example: "https://cdn.example.com/banner.jpg" },
+          imageUrl: {
+            type: "string",
+            example: "https://cdn.example.com/banner.jpg",
+          },
           styleClass: { type: "string", example: "hero-dark" },
           title: { type: "string", example: "Custom Neon Signs" },
-          description: { type: "string", example: "Made to order, ships in 3 days." },
+          description: {
+            type: "string",
+            example: "Made to order, ships in 3 days.",
+          },
           buttonLabel: { type: "string", example: "Shop Now" },
           route: { type: "string", example: "/products" },
-          innerHtml: { type: "string", example: "<strong>Limited offer</strong>" },
+          innerHtml: {
+            type: "string",
+            example: "<strong>Limited offer</strong>",
+          },
           justifyContent: { type: "string", example: "center" },
         },
       },
       SlideReorderInput: {
         type: "object",
         required: ["slideId", "newPosition"],
-        description: "Moves a slide to a new position, shifting other slides to keep positions sequential and unique.",
+        description:
+          "Moves a slide to a new position, shifting other slides to keep positions sequential and unique.",
         properties: {
-          slideId: { type: "integer", example: 3, description: "ID of the slide to move." },
-          newPosition: { type: "integer", example: 1, description: "Target position (1-based). Must be between 1 and the total number of slides." },
+          slideId: {
+            type: "integer",
+            example: 3,
+            description: "ID of the slide to move.",
+          },
+          newPosition: {
+            type: "integer",
+            example: 1,
+            description:
+              "Target position (1-based). Must be between 1 and the total number of slides.",
+          },
         },
       },
       SlideResponse: {
@@ -754,8 +836,10 @@ export const swaggerSpec = {
             properties: {
               imageUrl: {
                 type: "string",
-                example: "/uploads/products/1715000000000-ab3c7d1-neon-sign.png",
-                description: "Relative URL of the uploaded file. Accessible at http://localhost:3000{imageUrl}.",
+                example:
+                  "/uploads/products/1715000000000-ab3c7d1-neon-sign.png",
+                description:
+                  "Relative URL of the uploaded file. Accessible at http://localhost:3000{imageUrl}.",
               },
             },
           },
@@ -770,7 +854,11 @@ export const swaggerSpec = {
             type: "object",
             properties: {
               deleted: { type: "boolean", example: true },
-              imageUrl: { type: "string", example: "/uploads/products/1715000000000-ab3c7d1-neon-sign.png" },
+              imageUrl: {
+                type: "string",
+                example:
+                  "/uploads/products/1715000000000-ab3c7d1-neon-sign.png",
+              },
             },
           },
         },
@@ -819,7 +907,8 @@ export const swaggerSpec = {
           {
             name: "search",
             in: "query",
-            description: "Filter to products whose name or description contains this string (case-insensitive).",
+            description:
+              "Filter to products whose name or description contains this string (case-insensitive).",
             schema: { type: "string" },
           },
           {
@@ -831,7 +920,8 @@ export const swaggerSpec = {
           {
             name: "tagSlug",
             in: "query",
-            description: "Filter to products that have a tag with this slug (case-sensitive).",
+            description:
+              "Filter to products that have a tag with this slug (case-sensitive).",
             schema: { type: "string" },
           },
         ],
@@ -936,6 +1026,36 @@ export const swaggerSpec = {
         },
       },
     },
+    "/api/products/related": {
+      get: {
+        tags: ["Products"],
+        summary: "Get random products",
+        description:
+          "Returns a list of random products. Useful for generic discovery surfaces (e.g. homepage recommendations) " +
+          "where there is no source product to anchor relevance.\n\n" +
+          "The list is **not** paginated.",
+        parameters: [
+          {
+            name: "limit",
+            in: "query",
+            description:
+              "Maximum number of products to return. Defaults to 8. Must be a positive integer ≤ 100.",
+            schema: { type: "integer", minimum: 1, maximum: 100, default: 8 },
+          },
+        ],
+        responses: {
+          200: {
+            description: "Random product list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ProductListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
     "/api/products/{productId}/related": {
       get: {
         tags: ["Products"],
@@ -952,7 +1072,8 @@ export const swaggerSpec = {
           {
             name: "limit",
             in: "query",
-            description: "Maximum number of products to return. Defaults to 8. Must be a positive integer ≤ 100.",
+            description:
+              "Maximum number of products to return. Defaults to 8. Must be a positive integer ≤ 100.",
             schema: { type: "integer", minimum: 1, maximum: 100, default: 8 },
           },
         ],
@@ -986,10 +1107,13 @@ export const swaggerSpec = {
         ],
         responses: {
           200: {
-            description: "Category linked. Returns the updated product with its current categoryIds.",
+            description:
+              "Category linked. Returns the updated product with its current categoryIds.",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ProductWithCategoriesResponse" },
+                schema: {
+                  $ref: "#/components/schemas/ProductWithCategoriesResponse",
+                },
               },
             },
           },
@@ -1009,10 +1133,13 @@ export const swaggerSpec = {
         ],
         responses: {
           200: {
-            description: "Category unlinked. Returns the updated product with its current categoryIds.",
+            description:
+              "Category unlinked. Returns the updated product with its current categoryIds.",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ProductWithCategoriesResponse" },
+                schema: {
+                  $ref: "#/components/schemas/ProductWithCategoriesResponse",
+                },
               },
             },
           },
@@ -1026,14 +1153,17 @@ export const swaggerSpec = {
       get: {
         tags: ["Variants"],
         summary: "List variants",
-        description: "Returns all variants for the given product, ordered by ID. Returns 404 if the product does not exist.",
+        description:
+          "Returns all variants for the given product, ordered by ID. Returns 404 if the product does not exist.",
         parameters: [{ $ref: "#/components/parameters/variantProductId" }],
         responses: {
           200: {
             description: "Variant list",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ProductVariantListResponse" },
+                schema: {
+                  $ref: "#/components/schemas/ProductVariantListResponse",
+                },
               },
             },
           },
@@ -1103,7 +1233,8 @@ export const swaggerSpec = {
       delete: {
         tags: ["Variants"],
         summary: "Delete variant",
-        description: "Deletes a variant. Returns 404 if the variant does not exist or does not belong to the given product.",
+        description:
+          "Deletes a variant. Returns 404 if the variant does not exist or does not belong to the given product.",
         parameters: [
           { $ref: "#/components/parameters/variantProductId" },
           { $ref: "#/components/parameters/variantId" },
@@ -1127,14 +1258,17 @@ export const swaggerSpec = {
       get: {
         tags: ["Color Options"],
         summary: "List color options",
-        description: "Returns all color options for the given product, ordered by ID. Returns 404 if the product does not exist.",
+        description:
+          "Returns all color options for the given product, ordered by ID. Returns 404 if the product does not exist.",
         parameters: [{ $ref: "#/components/parameters/colorOptionProductId" }],
         responses: {
           200: {
             description: "Color option list",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ProductColorOptionListResponse" },
+                schema: {
+                  $ref: "#/components/schemas/ProductColorOptionListResponse",
+                },
               },
             },
           },
@@ -1161,7 +1295,9 @@ export const swaggerSpec = {
             description: "Color option created",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ProductColorOptionResponse" },
+                schema: {
+                  $ref: "#/components/schemas/ProductColorOptionResponse",
+                },
               },
             },
           },
@@ -1193,7 +1329,9 @@ export const swaggerSpec = {
             description: "Color option updated",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ProductColorOptionResponse" },
+                schema: {
+                  $ref: "#/components/schemas/ProductColorOptionResponse",
+                },
               },
             },
           },
@@ -1204,7 +1342,8 @@ export const swaggerSpec = {
       delete: {
         tags: ["Color Options"],
         summary: "Delete color option",
-        description: "Deletes a color option. Returns 404 if the option does not exist or does not belong to the given product.",
+        description:
+          "Deletes a color option. Returns 404 if the option does not exist or does not belong to the given product.",
         parameters: [
           { $ref: "#/components/parameters/colorOptionProductId" },
           { $ref: "#/components/parameters/colorOptionId" },
@@ -1236,7 +1375,8 @@ export const swaggerSpec = {
           {
             name: "search",
             in: "query",
-            description: "Filter to tags whose name or slug contains this string (case-insensitive).",
+            description:
+              "Filter to tags whose name or slug contains this string (case-insensitive).",
             schema: { type: "string" },
           },
         ],
@@ -1327,7 +1467,8 @@ export const swaggerSpec = {
       delete: {
         tags: ["Tags"],
         summary: "Delete tag",
-        description: "Deletes a tag. The tag is also removed from any products it was linked to.",
+        description:
+          "Deletes a tag. The tag is also removed from any products it was linked to.",
         parameters: [{ $ref: "#/components/parameters/tagId" }],
         responses: {
           200: {
@@ -1347,7 +1488,8 @@ export const swaggerSpec = {
       get: {
         tags: ["Product-Tag"],
         summary: "List product tags",
-        description: "Returns all tags currently linked to the given product, ordered by ID. Returns 404 if the product does not exist.",
+        description:
+          "Returns all tags currently linked to the given product, ordered by ID. Returns 404 if the product does not exist.",
         parameters: [{ $ref: "#/components/parameters/productTagProductId" }],
         responses: {
           200: {
@@ -1377,10 +1519,13 @@ export const swaggerSpec = {
         ],
         responses: {
           200: {
-            description: "Tag linked. Returns the updated product with its current tagIds.",
+            description:
+              "Tag linked. Returns the updated product with its current tagIds.",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ProductWithTagsResponse" },
+                schema: {
+                  $ref: "#/components/schemas/ProductWithTagsResponse",
+                },
               },
             },
           },
@@ -1400,10 +1545,13 @@ export const swaggerSpec = {
         ],
         responses: {
           200: {
-            description: "Tag unlinked. Returns the updated product with its current tagIds.",
+            description:
+              "Tag unlinked. Returns the updated product with its current tagIds.",
             content: {
               "application/json": {
-                schema: { $ref: "#/components/schemas/ProductWithTagsResponse" },
+                schema: {
+                  $ref: "#/components/schemas/ProductWithTagsResponse",
+                },
               },
             },
           },
@@ -1431,7 +1579,8 @@ export const swaggerSpec = {
           {
             name: "search",
             in: "query",
-            description: "Filter to categories whose name or description contains this string (case-insensitive).",
+            description:
+              "Filter to categories whose name or description contains this string (case-insensitive).",
             schema: { type: "string" },
           },
         ],
@@ -1599,8 +1748,12 @@ export const swaggerSpec = {
             name: "imageUrl",
             in: "query",
             required: true,
-            description: "Relative URL of the file to delete, as returned by the upload endpoint.",
-            schema: { type: "string", example: "/uploads/products/1715000000000-ab3c7d1-neon-sign.png" },
+            description:
+              "Relative URL of the file to delete, as returned by the upload endpoint.",
+            schema: {
+              type: "string",
+              example: "/uploads/products/1715000000000-ab3c7d1-neon-sign.png",
+            },
           },
         ],
         responses: {
