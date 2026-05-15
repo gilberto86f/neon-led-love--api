@@ -377,6 +377,26 @@ DELETE /api/images?imageUrl=/uploads/products/1715000000000-ab3c7d1-neon-sign.pn
 
 Uploaded files are stored in `uploads/` at the project root and are **not committed to git** (the folder is in `.gitignore`). The folder is created automatically on first upload.
 
+**Users**
+
+Customer and admin accounts. Unlike products and categories (which are read by `slug`), users are read and written by their numeric `id`. `email` is **globally unique**.
+
+| Method | Path          | Body (JSON)          | What it does              |
+| ------ | ------------- | -------------------- | ------------------------- |
+| GET    | `/users`      | —                    | List users (paginated)    |
+| GET    | `/users/:id`  | —                    | Get one user by ID        |
+| POST   | `/users`      | [User](#user-fields) | Create a new user         |
+| PUT    | `/users/:id`  | [User](#user-fields) | Replace a user            |
+| DELETE | `/users/:id`  | —                    | Delete a user             |
+
+The list endpoint supports the standard `page` / `perPage` pagination plus three optional filters:
+
+- `search` — case-insensitive substring match against first name, paternal/maternal last name, email, or phone number.
+- `role` — one of `admin`, `client`, `super`. Omit to return all roles.
+- `status` — `0` (INACTIVE) or `1` (ACTIVE). Omit to return all statuses.
+
+Example: `GET /api/users?role=client&status=1&search=ada&page=1&perPage=20`
+
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 
 ### Pagination
@@ -613,6 +633,45 @@ Validation rules:
 - Returns `404` from `GET /tags/:slug`, `PUT /tags/:id`, or `DELETE /tags/:id` when no tag matches.
 
 Tags are independent of products. The same tag can be linked to many products, and a product can have many tags — see the **Product-Tag relations** endpoints to manage links.
+
+### User fields
+
+```ts
+// What you send for POST /users and PUT /users/:id
+type UserInput = {
+  firstName: string;        // required
+  paternalLastName: string; // required
+  maternalLastName: string; // required
+  email: string;            // required — valid format, globally unique
+  phoneNumber?: string;     // optional — max 20 characters
+  role: "admin" | "client" | "super"; // required
+  status?: 0 | 1;           // optional — 0 = INACTIVE, 1 = ACTIVE (defaults to 1)
+  notificationPreferences?: 1 | 2 | 3; // optional — 1 = EMAIL, 2 = SMS, 3 = WHATS_APP
+  dateOfBirth?: string;     // optional — "YYYY-MM-DD"
+};
+```
+
+| Field                     | Type   | Required | Notes                                                            |
+| ------------------------- | ------ | -------- | ---------------------------------------------------------------- |
+| `firstName`               | string | yes      | Trimmed before saving.                                           |
+| `paternalLastName`        | string | yes      | Trimmed before saving.                                           |
+| `maternalLastName`        | string | yes      | Trimmed before saving.                                           |
+| `email`                   | string | yes      | Must be a valid email and **globally unique**. Stored lowercased. |
+| `phoneNumber`             | string | no       | Max 20 characters. Stored as `null` when omitted.                |
+| `role`                    | enum   | yes      | One of `admin`, `client`, `super`.                               |
+| `status`                  | number | no       | `0` (INACTIVE) or `1` (ACTIVE). Defaults to `1`.                 |
+| `notificationPreferences` | number | no       | `1` (EMAIL), `2` (SMS), or `3` (WHATS_APP). `null` when omitted. |
+| `dateOfBirth`             | string | no       | `YYYY-MM-DD` format. `null` when omitted.                        |
+
+Validation rules:
+
+- The three name fields and `email` are required and must be non-empty after trimming — `400` if missing.
+- `email` must match a valid email pattern and be unique across all users — `400` with a clear message on duplicate.
+- `phoneNumber`, when provided, must be a string of at most 20 characters.
+- `role` must be one of the three allowed values; `status` must be `0` or `1`; `notificationPreferences` must be `1`, `2`, or `3`; `dateOfBirth` must match `YYYY-MM-DD` — each returns `400` if invalid.
+- Returns `404` from `GET /users/:id`, `PUT /users/:id`, or `DELETE /users/:id` when no user matches.
+
+> Addresses, payment methods, and orders are part of the broader user model but are **not** managed through these endpoints yet — they will get their own resources later. The current Users endpoints cover the core account fields above.
 
 ### Custom Prices fields
 

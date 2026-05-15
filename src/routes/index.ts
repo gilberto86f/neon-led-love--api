@@ -5,6 +5,7 @@ import pricesRoutes from './prices.routes';
 import tagRoutes from './tag.routes';
 import slideRoutes from './slide.routes';
 import imageRoutes from './image.routes';
+import userRoutes from './user.routes';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/tags', tagRoutes);
 router.use('/prices', pricesRoutes);
 router.use('/slides', slideRoutes);
 router.use('/images', imageRoutes);
+router.use('/users', userRoutes);
 
 export default router;

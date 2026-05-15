@@ -71,6 +71,11 @@ export const swaggerSpec = {
       description:
         "File upload and deletion. Uploaded files are served as static assets under /uploads/.",
     },
+    {
+      name: "Users",
+      description:
+        "Customer and admin accounts. Read and write by numeric ID. Email is unique.",
+    },
   ],
   components: {
     parameters: {
@@ -157,6 +162,13 @@ export const swaggerSpec = {
         required: true,
         description: "URL-friendly tag identifier (e.g. `outdoor`)",
         schema: { type: "string" },
+      },
+      userId: {
+        name: "id",
+        in: "path",
+        required: true,
+        description: "Numeric user ID",
+        schema: { type: "integer", minimum: 1 },
       },
       productTagProductId: {
         name: "productId",
@@ -627,6 +639,98 @@ export const swaggerSpec = {
           success: { type: "integer", enum: [1], example: 1 },
           status: { type: "integer", example: 200 },
           data: { $ref: "#/components/schemas/ProductWithTags" },
+        },
+      },
+      User: {
+        type: "object",
+        description:
+          "A user account. `status`: 0 = INACTIVE, 1 = ACTIVE. " +
+          "`notificationPreferences`: 1 = EMAIL, 2 = SMS, 3 = WHATS_APP.",
+        properties: {
+          id: { type: "integer", example: 1 },
+          firstName: { type: "string", example: "Ada" },
+          paternalLastName: { type: "string", example: "Lovelace" },
+          maternalLastName: { type: "string", example: "Byron" },
+          email: { type: "string", format: "email", example: "ada@example.com" },
+          phoneNumber: {
+            type: "string",
+            nullable: true,
+            maxLength: 20,
+            example: "+52 55 1234 5678",
+          },
+          role: { type: "string", enum: ["admin", "client", "super"], example: "client" },
+          status: { type: "integer", enum: [0, 1], example: 1 },
+          notificationPreferences: {
+            type: "integer",
+            enum: [1, 2, 3],
+            nullable: true,
+            example: 1,
+          },
+          dateOfBirth: {
+            type: "string",
+            nullable: true,
+            description: "YYYY-MM-DD",
+            example: "1990-12-10",
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      UserInput: {
+        type: "object",
+        required: ["firstName", "paternalLastName", "maternalLastName", "email", "role"],
+        description:
+          "Fields accepted when creating or updating a user. " +
+          "`email` must be a valid, globally-unique address (returns 400 on duplicate). " +
+          "`phoneNumber` is optional, max 20 characters. " +
+          "`status` defaults to 1 (ACTIVE) when omitted.",
+        properties: {
+          firstName: { type: "string", example: "Ada" },
+          paternalLastName: { type: "string", example: "Lovelace" },
+          maternalLastName: { type: "string", example: "Byron" },
+          email: { type: "string", format: "email", example: "ada@example.com" },
+          phoneNumber: {
+            type: "string",
+            nullable: true,
+            maxLength: 20,
+            example: "+52 55 1234 5678",
+          },
+          role: { type: "string", enum: ["admin", "client", "super"], example: "client" },
+          status: { type: "integer", enum: [0, 1], default: 1, example: 1 },
+          notificationPreferences: {
+            type: "integer",
+            enum: [1, 2, 3],
+            nullable: true,
+            example: 1,
+          },
+          dateOfBirth: {
+            type: "string",
+            nullable: true,
+            description: "YYYY-MM-DD",
+            example: "1990-12-10",
+          },
+        },
+      },
+      UserResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/User" },
+        },
+      },
+      UserListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: {
+            type: "array",
+            items: { $ref: "#/components/schemas/User" },
+          },
+          total: { type: "integer", example: 1 },
+          page: { type: "integer", example: 1 },
+          perPage: { type: "integer", example: 20 },
         },
       },
       CustomPrices: {
@@ -1944,6 +2048,139 @@ export const swaggerSpec = {
               },
             },
           },
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Users ───────────────────────────────────────────────────────────────
+    "/api/users": {
+      get: {
+        tags: ["Users"],
+        summary: "List users",
+        description:
+          "Returns a paginated list of users ordered by ID.\n\n" +
+          "Pass `search` to filter by first/paternal/maternal name, email, or phone number " +
+          "(case-insensitive substring match).\n\n" +
+          "Pass `role` and/or `status` to filter. When omitted, all roles / statuses are returned.",
+        parameters: [
+          ...paginationParameters,
+          {
+            name: "search",
+            in: "query",
+            description:
+              "Filter by name, email, or phone number (case-insensitive substring).",
+            schema: { type: "string" },
+          },
+          {
+            name: "role",
+            in: "query",
+            description: "Filter to a single role.",
+            schema: { type: "string", enum: ["admin", "client", "super"] },
+          },
+          {
+            name: "status",
+            in: "query",
+            description: "Filter by account status: 0 = INACTIVE, 1 = ACTIVE.",
+            schema: { type: "integer", enum: [0, 1] },
+          },
+        ],
+        responses: {
+          200: {
+            description: "Paginated user list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UserListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+      post: {
+        tags: ["Users"],
+        summary: "Create user",
+        description:
+          "Creates a new user. `email` must be a valid, globally-unique address (returns 400 on duplicate).",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/UserInput" },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "User created",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UserResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
+    "/api/users/{id}": {
+      get: {
+        tags: ["Users"],
+        summary: "Get user by ID",
+        parameters: [{ $ref: "#/components/parameters/userId" }],
+        responses: {
+          200: {
+            description: "User found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UserResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      put: {
+        tags: ["Users"],
+        summary: "Update user",
+        description:
+          "Replaces all fields of an existing user. `email` must remain globally unique (returns 400 on duplicate).",
+        parameters: [{ $ref: "#/components/parameters/userId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/UserInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "User updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UserResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      delete: {
+        tags: ["Users"],
+        summary: "Delete user",
+        parameters: [{ $ref: "#/components/parameters/userId" }],
+        responses: {
+          200: {
+            description: "User deleted",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/DeletedResponse" },
+              },
+            },
+          },
+          400: errorResponse,
           404: errorResponse,
         },
       },
