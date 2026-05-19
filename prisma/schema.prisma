@@ -122,6 +122,41 @@ model User {
   dateOfBirth             String?
   createdAt               DateTime @default(now())
   updatedAt               DateTime @updatedAt
+  orders                  Order[]
+}
+
+model Order {
+  id              Int         @id @default(autoincrement())
+  userId          Int
+  user            User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+  status          String      @default("pending")
+  currency        String
+  subtotalAmount  Float
+  shippingAmount  Float
+  taxAmount       Float
+  totalAmount     Float
+  shippingAddress Json?
+  paymentId       String?
+  trackingNumber  String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  items           OrderItem[]
+}
+
+model OrderItem {
+  id              Int      @id @default(autoincrement())
+  orderId         Int
+  order           Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       Int
+  productName     String
+  productSlug     String
+  productImageUrl String?
+  unitPrice       Float
+  quantity        Int
+  totalAmount     Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }
 
 model Slide {

@@ -397,6 +397,27 @@ The list endpoint supports the standard `page` / `perPage` pagination plus three
 
 Example: `GET /api/users?role=client&status=1&search=ada&page=1&perPage=20`
 
+**Orders**
+
+A purchase made by a user. Each order owns its `items[]` — those items store a **snapshot** of product data (name, slug, image, unit price) at the time of purchase, so order history stays accurate even if a product is later renamed, repriced, or deleted.
+
+| Method | Path           | Body (JSON)            | What it does               |
+| ------ | -------------- | ---------------------- | -------------------------- |
+| GET    | `/orders`      | —                      | List orders (paginated)    |
+| GET    | `/orders/:id`  | —                      | Get one order by ID        |
+| POST   | `/orders`      | [Order](#order-fields) | Create a new order         |
+| PUT    | `/orders/:id`  | [Order](#order-fields) | Replace an order           |
+| DELETE | `/orders/:id`  | —                      | Delete an order            |
+
+The list endpoint supports the standard `page` / `perPage` pagination plus two optional filters:
+
+- `search` — matches an exact order ID (when the value is numeric), tracking number, payment ID, or any of the owning user's name fields, email, or phone number (case-insensitive substring).
+- `status` — one of `pending`, `paid`, `processing`, `shipped`, `delivered`, `cancelled`, `refunded`. Omit to return all statuses.
+
+Example: `GET /api/orders?status=processing&search=lovelace&page=1&perPage=20`
+
+Deleting an order also deletes its items (cascade). Deleting a user who has orders returns `400` with a message like `Cannot delete user 5: user has 3 orders. Delete them first.` — remove the user's orders first.
+
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 
 ### Pagination
@@ -671,7 +692,93 @@ Validation rules:
 - `role` must be one of the three allowed values; `status` must be `0` or `1`; `notificationPreferences` must be `1`, `2`, or `3`; `dateOfBirth` must match `YYYY-MM-DD` — each returns `400` if invalid.
 - Returns `404` from `GET /users/:id`, `PUT /users/:id`, or `DELETE /users/:id` when no user matches.
 
-> Addresses, payment methods, and orders are part of the broader user model but are **not** managed through these endpoints yet — they will get their own resources later. The current Users endpoints cover the core account fields above.
+> Addresses and payment methods are part of the broader user model but are **not** managed through these endpoints yet — they will get their own resources later. Orders **are** implemented — see [Order fields](#order-fields).
+
+### Order fields
+
+```ts
+type OrderStatus =
+  | "pending" | "paid" | "processing" | "shipped"
+  | "delivered" | "cancelled" | "refunded";
+
+// What you send for POST /orders and PUT /orders/:id
+type OrderInput = {
+  userId: number;            // required — must reference an existing user
+  status?: OrderStatus;      // optional — defaults to "pending"
+  currency: string;          // required — e.g. "MXN", "USD"
+  subtotalAmount: number;    // required — ≥ 0
+  shippingAmount: number;    // required — ≥ 0
+  taxAmount: number;         // required — ≥ 0
+  totalAmount: number;       // required — must equal subtotal + shipping + tax
+  items: OrderItemInput[];   // required — at least one line
+  shippingAddress?: ShippingAddress; // optional
+  paymentId?: string;        // optional
+  trackingNumber?: string;   // optional
+  notes?: string;            // optional
+};
+
+type OrderItemInput = {
+  productId: number;         // reference (not a FK — kept as a snapshot)
+  productName: string;       // snapshot at purchase time
+  productSlug: string;       // snapshot at purchase time
+  productImageUrl?: string;  // snapshot at purchase time
+  unitPrice: number;         // snapshot at purchase time
+  quantity: number;          // ≥ 1
+  totalAmount: number;       // must equal unitPrice * quantity
+};
+
+type ShippingAddress = {
+  address: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  fullName: string;
+  phoneNumber: string;
+};
+```
+
+**Order-level fields**
+
+| Field             | Type                        | Required | Notes                                                          |
+| ----------------- | --------------------------- | -------- | -------------------------------------------------------------- |
+| `userId`          | number                      | yes      | Must reference an existing user. Returns `400` if not found.   |
+| `status`          | enum                        | no       | Defaults to `"pending"`. One of the seven `OrderStatus` values.|
+| `currency`        | string                      | yes      | Trimmed before saving. E.g. `"MXN"`, `"USD"`.                  |
+| `subtotalAmount`  | number                      | yes      | Non-negative.                                                  |
+| `shippingAmount`  | number                      | yes      | Non-negative.                                                  |
+| `taxAmount`       | number                      | yes      | Non-negative.                                                  |
+| `totalAmount`     | number                      | yes      | **Must equal** `subtotal + shipping + tax` (±0.01).            |
+| `items`           | array                       | yes      | At least one item. See below.                                  |
+| `shippingAddress` | object \| null              | no       | All seven fields required when provided.                       |
+| `paymentId`       | string \| null              | no       | E.g. a Stripe / PayPal transaction reference.                  |
+| `trackingNumber`  | string \| null              | no       | Carrier tracking number.                                       |
+| `notes`           | string \| null              | no       | Free-form customer notes.                                      |
+
+**Item fields** (each entry in `items[]`)
+
+| Field             | Type           | Required | Notes                                                  |
+| ----------------- | -------------- | -------- | ------------------------------------------------------ |
+| `productId`       | number         | yes      | Reference only — no FK; preserved even if the product is deleted. |
+| `productName`     | string         | yes      | Snapshot at purchase time.                             |
+| `productSlug`     | string         | yes      | Snapshot at purchase time.                             |
+| `productImageUrl` | string \| null | no       | Snapshot at purchase time.                             |
+| `unitPrice`       | number         | yes      | Non-negative. Snapshot at purchase time.               |
+| `quantity`        | number         | yes      | Positive integer.                                      |
+| `totalAmount`     | number         | yes      | **Must equal** `unitPrice * quantity` (±0.01).         |
+
+Validation rules:
+
+- `userId`, `currency`, the four amount fields, and `items[]` are all required — `400` if missing or invalid.
+- `totalAmount` must equal `subtotalAmount + shippingAmount + taxAmount` (within a 0.01 tolerance for floating-point rounding).
+- Each item's `totalAmount` must equal `unitPrice * quantity` (same tolerance).
+- `status`, when provided, must be one of the seven allowed values.
+- `shippingAddress`, when provided, must include every field as a non-empty string.
+- Returns `404` from `GET /orders/:id`, `PUT /orders/:id`, or `DELETE /orders/:id` when no order matches.
+
+**Why items are snapshots:** if a product is renamed or repriced after an order ships, the order should still show the data the customer actually saw and paid for. `productId` is stored as a reference but is **not** a foreign key — the product can be deleted without breaking historical orders.
+
+**PUT replaces everything, including items:** updating an order deletes all existing items and recreates them from the request body, inside a single transaction. If you only need to change the status or tracking number, you still need to send the full order payload.
 
 ### Custom Prices fields
 

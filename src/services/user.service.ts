@@ -159,6 +159,13 @@ export const userService = {
 
   deleteUser: async (id: number) => {
     await getUserById(id);
+    const orderCount = await prisma.order.count({ where: { userId: id } });
+    if (orderCount > 0) {
+      throw new HttpError(
+        400,
+        `Cannot delete user ${id}: user has ${orderCount} order${orderCount === 1 ? "" : "s"}. Delete them first.`,
+      );
+    }
     await prisma.user.delete({ where: { id } });
   },
 };

@@ -76,6 +76,11 @@ export const swaggerSpec = {
       description:
         "Customer and admin accounts. Read and write by numeric ID. Email is unique.",
     },
+    {
+      name: "Orders",
+      description:
+        "Customer orders. Each order owns its `items[]` and stores a snapshot of product data (name, slug, image, price) at purchase time so historical records survive product changes.",
+    },
   ],
   components: {
     parameters: {
@@ -168,6 +173,13 @@ export const swaggerSpec = {
         in: "path",
         required: true,
         description: "Numeric user ID",
+        schema: { type: "integer", minimum: 1 },
+      },
+      orderId: {
+        name: "id",
+        in: "path",
+        required: true,
+        description: "Numeric order ID",
         schema: { type: "integer", minimum: 1 },
       },
       productTagProductId: {
@@ -727,6 +739,176 @@ export const swaggerSpec = {
           results: {
             type: "array",
             items: { $ref: "#/components/schemas/User" },
+          },
+          total: { type: "integer", example: 1 },
+          page: { type: "integer", example: 1 },
+          perPage: { type: "integer", example: 20 },
+        },
+      },
+      ShippingAddress: {
+        type: "object",
+        required: [
+          "address",
+          "city",
+          "state",
+          "postalCode",
+          "country",
+          "fullName",
+          "phoneNumber",
+        ],
+        properties: {
+          address: { type: "string", example: "Av. Insurgentes Sur 1234" },
+          city: { type: "string", example: "Ciudad de México" },
+          state: { type: "string", example: "CDMX" },
+          postalCode: { type: "string", example: "03100" },
+          country: { type: "string", example: "MX" },
+          fullName: { type: "string", example: "Ada Lovelace Byron" },
+          phoneNumber: { type: "string", example: "+52 55 1234 5678" },
+        },
+      },
+      OrderItemInput: {
+        type: "object",
+        required: [
+          "productId",
+          "productName",
+          "productSlug",
+          "unitPrice",
+          "quantity",
+          "totalAmount",
+        ],
+        description:
+          "An order line. `productName`, `productSlug`, `productImageUrl`, and `unitPrice` are snapshots of the product at purchase time — they are NOT looked up from the live Product. `totalAmount` must equal `unitPrice * quantity`.",
+        properties: {
+          productId: { type: "integer", example: 1 },
+          productName: { type: "string", example: "Neon Heart" },
+          productSlug: { type: "string", example: "neon-heart" },
+          productImageUrl: {
+            type: "string",
+            nullable: true,
+            example: "/uploads/products/1715000000000-abc-neon-heart.png",
+          },
+          unitPrice: { type: "number", example: 49.99 },
+          quantity: { type: "integer", minimum: 1, example: 2 },
+          totalAmount: { type: "number", example: 99.98 },
+        },
+      },
+      OrderItem: {
+        allOf: [
+          { $ref: "#/components/schemas/OrderItemInput" },
+          {
+            type: "object",
+            properties: {
+              id: { type: "integer", example: 1 },
+              orderId: { type: "integer", example: 1 },
+              createdAt: { type: "string", format: "date-time" },
+              updatedAt: { type: "string", format: "date-time" },
+            },
+          },
+        ],
+      },
+      OrderInput: {
+        type: "object",
+        required: [
+          "userId",
+          "currency",
+          "subtotalAmount",
+          "shippingAmount",
+          "taxAmount",
+          "totalAmount",
+          "items",
+        ],
+        description:
+          "Payload for creating or replacing an order. `totalAmount` must equal `subtotalAmount + shippingAmount + taxAmount`. " +
+          "`items` must contain at least one line. PUT **replaces** all fields including the full items array.",
+        properties: {
+          userId: { type: "integer", example: 1 },
+          status: {
+            type: "string",
+            enum: [
+              "pending",
+              "paid",
+              "processing",
+              "shipped",
+              "delivered",
+              "cancelled",
+              "refunded",
+            ],
+            default: "pending",
+            example: "pending",
+          },
+          currency: { type: "string", example: "MXN" },
+          subtotalAmount: { type: "number", example: 99.98 },
+          shippingAmount: { type: "number", example: 10.0 },
+          taxAmount: { type: "number", example: 16.0 },
+          totalAmount: { type: "number", example: 125.98 },
+          items: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/OrderItemInput" },
+          },
+          shippingAddress: {
+            allOf: [{ $ref: "#/components/schemas/ShippingAddress" }],
+            nullable: true,
+          },
+          paymentId: { type: "string", nullable: true, example: "stripe_pi_3OabCdEfGhIjKlMn" },
+          trackingNumber: { type: "string", nullable: true, example: "1Z999AA10123456784" },
+          notes: { type: "string", nullable: true, example: "Leave at the front desk." },
+        },
+      },
+      Order: {
+        type: "object",
+        properties: {
+          id: { type: "integer", example: 1 },
+          userId: { type: "integer", example: 1 },
+          status: {
+            type: "string",
+            enum: [
+              "pending",
+              "paid",
+              "processing",
+              "shipped",
+              "delivered",
+              "cancelled",
+              "refunded",
+            ],
+            example: "pending",
+          },
+          currency: { type: "string", example: "MXN" },
+          subtotalAmount: { type: "number", example: 99.98 },
+          shippingAmount: { type: "number", example: 10.0 },
+          taxAmount: { type: "number", example: 16.0 },
+          totalAmount: { type: "number", example: 125.98 },
+          items: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OrderItem" },
+          },
+          shippingAddress: {
+            allOf: [{ $ref: "#/components/schemas/ShippingAddress" }],
+            nullable: true,
+          },
+          paymentId: { type: "string", nullable: true, example: "stripe_pi_3OabCdEfGhIjKlMn" },
+          trackingNumber: { type: "string", nullable: true, example: "1Z999AA10123456784" },
+          notes: { type: "string", nullable: true },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      OrderResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/Order" },
+        },
+      },
+      OrderListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: {
+            type: "array",
+            items: { $ref: "#/components/schemas/Order" },
           },
           total: { type: "integer", example: 1 },
           page: { type: "integer", example: 1 },
@@ -2170,10 +2352,155 @@ export const swaggerSpec = {
       delete: {
         tags: ["Users"],
         summary: "Delete user",
+        description:
+          "Deletes a user. Returns `400` if the user has any orders — delete the user's orders first.",
         parameters: [{ $ref: "#/components/parameters/userId" }],
         responses: {
           200: {
             description: "User deleted",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/DeletedResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Orders ──────────────────────────────────────────────────────────────
+    "/api/orders": {
+      get: {
+        tags: ["Orders"],
+        summary: "List orders",
+        description:
+          "Returns a paginated list of orders ordered by ID (newest first).\n\n" +
+          "Pass `search` to filter by order ID (exact numeric match), tracking number, payment ID, " +
+          "or the related user's first/paternal/maternal name, email, or phone number (case-insensitive substring).\n\n" +
+          "Pass `status` to filter by order status. Omit to return all statuses.",
+        parameters: [
+          ...paginationParameters,
+          {
+            name: "search",
+            in: "query",
+            description:
+              "Filter by order ID, tracking number, payment ID, or related user info.",
+            schema: { type: "string" },
+          },
+          {
+            name: "status",
+            in: "query",
+            description: "Filter by order status.",
+            schema: {
+              type: "string",
+              enum: [
+                "pending",
+                "paid",
+                "processing",
+                "shipped",
+                "delivered",
+                "cancelled",
+                "refunded",
+              ],
+            },
+          },
+        ],
+        responses: {
+          200: {
+            description: "Paginated order list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OrderListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+      post: {
+        tags: ["Orders"],
+        summary: "Create order",
+        description:
+          "Creates a new order. The `userId` must reference an existing user. " +
+          "`items[]` must contain at least one line and each line's `totalAmount` must equal `unitPrice * quantity`. " +
+          "Order `totalAmount` must equal `subtotalAmount + shippingAmount + taxAmount`.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderInput" },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Order created",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OrderResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
+    "/api/orders/{id}": {
+      get: {
+        tags: ["Orders"],
+        summary: "Get order by ID",
+        parameters: [{ $ref: "#/components/parameters/orderId" }],
+        responses: {
+          200: {
+            description: "Order found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OrderResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      put: {
+        tags: ["Orders"],
+        summary: "Update order",
+        description:
+          "Replaces all fields of an existing order, including the full `items[]` array. " +
+          "Existing items are deleted and the provided ones are created in a single transaction. " +
+          "The same amount-consistency rules as create apply.",
+        parameters: [{ $ref: "#/components/parameters/orderId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Order updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OrderResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          404: errorResponse,
+        },
+      },
+      delete: {
+        tags: ["Orders"],
+        summary: "Delete order",
+        description: "Deletes an order and all of its items (cascade).",
+        parameters: [{ $ref: "#/components/parameters/orderId" }],
+        responses: {
+          200: {
+            description: "Order deleted",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/DeletedResponse" },
