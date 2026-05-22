@@ -1208,7 +1208,7 @@ export const swaggerSpec = {
         summary: "List products",
         description:
           "Returns a paginated list of all products ordered by ID.\n\n" +
-          "Pass `search` to filter by name/description, `categoryId` to filter by category, or both at once.",
+          "Pass `search` to filter by name/description, `categoryId` to filter by category, `tagSlug` to filter by tag, `isActive` to filter by active/inactive — or any combination.",
         parameters: [
           ...paginationParameters,
           {
@@ -1230,6 +1230,13 @@ export const swaggerSpec = {
             description:
               "Filter to products that have a tag with this slug (case-sensitive).",
             schema: { type: "string" },
+          },
+          {
+            name: "isActive",
+            in: "query",
+            description:
+              "Filter by active status. `true` → only active, `false` → only inactive. Omit to return both.",
+            schema: { type: "boolean" },
           },
         ],
         responses: {

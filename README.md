@@ -435,20 +435,23 @@ Example: `GET /api/products?page=2&perPage=10`
 
 `GET /products` accepts additional filter query parameters that can be combined freely:
 
-| Parameter    | Type   | Description                                                                            |
-| ------------ | ------ | -------------------------------------------------------------------------------------- |
-| `search`     | string | Return only products whose name or description contains this string (case-insensitive) |
-| `categoryId` | number | Return only products linked to the category with this ID                               |
-| `tagSlug`    | string | Return only products that have a tag with this slug (case-sensitive)                   |
+| Parameter    | Type    | Description                                                                            |
+| ------------ | ------- | -------------------------------------------------------------------------------------- |
+| `search`     | string  | Return only products whose name or description contains this string (case-insensitive) |
+| `categoryId` | number  | Return only products linked to the category with this ID                               |
+| `tagSlug`    | string  | Return only products that have a tag with this slug (case-sensitive)                   |
+| `isActive`   | boolean | `true` → only active products, `false` → only inactive. Omit to return both.           |
 
 Examples:
 
 - `GET /api/products?search=pikachu` — products whose name or description contains "pikachu"
 - `GET /api/products?categoryId=123` — products in category 123
 - `GET /api/products?tagSlug=coffee` — products that have a tag with slug "coffee"
-- `GET /api/products?search=pikachu&categoryId=123&tagSlug=coffee` — all three filters applied at once
+- `GET /api/products?isActive=true` — only active products
+- `GET /api/products?isActive=false` — only inactive products
+- `GET /api/products?search=pikachu&categoryId=123&tagSlug=coffee&isActive=true` — all filters applied at once
 
-Filters return an empty list (not a 404) when no products match. `categoryId` returns `400` if it is not a positive integer. Blank `search` and `tagSlug` values are ignored.
+Filters return an empty list (not a 404) when no products match. `categoryId` returns `400` if it is not a positive integer. Blank `search` and `tagSlug` values are ignored. `isActive` only recognizes the literal strings `"true"` and `"false"` — any other value (including `"1"`, `"0"`, or blank) is treated as if the param were omitted.
 
 ### Filtering categories
 
