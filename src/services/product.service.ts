@@ -6,6 +6,7 @@ export interface Product {
   name: string;
   description: string;
   slug: string;
+  isActive: boolean;
   images?: string[];
   discountType?: string;
   discount?: number;
@@ -50,10 +51,17 @@ const optionalImages = (input: Partial<ProductInput>) => {
   }
 };
 
+const requireBoolean = (input: Partial<ProductInput>, field: keyof Product) => {
+  if (typeof input[field] !== "boolean") {
+    throw new HttpError(400, `Field must be a boolean: "${field}"`);
+  }
+};
+
 const validate = (input: Partial<ProductInput>) => {
   requireString(input, "name");
   requireString(input, "description");
   requireString(input, "slug");
+  requireBoolean(input, "isActive");
   optionalString(input, "discountType");
   optionalNumber(input, "discount");
   optionalImages(input);
@@ -83,6 +91,7 @@ const normalize = (input: ProductInput) => ({
   name: input.name.trim(),
   description: input.description.trim(),
   slug: input.slug.trim(),
+  isActive: input.isActive,
   images: input.images?.map((u) => u.trim()) ?? [],
   discountType: input.discountType?.trim() || null,
   discount: input.discount ?? null,

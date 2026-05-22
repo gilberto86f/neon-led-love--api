@@ -490,6 +490,7 @@ type ProductInput = {
   name: string; // required
   description: string; // required
   slug: string; // required — unique, URL-friendly identifier
+  isActive: boolean; // required — set to false to deactivate without deleting
   images?: string[]; // optional — ordered list of image URLs; defaults to []
   discountType?: string; // optional — e.g. "percentage" or "fixed"
   discount?: number; // optional — e.g. 10 or 5
@@ -501,6 +502,7 @@ type ProductInput = {
 | `name`         | string   | yes      | Product display name.                                                                          |
 | `description`  | string   | yes      | Free-form description.                                                                         |
 | `slug`         | string   | yes      | Unique. Used for public URLs. `neon-heart-xl`, etc.                                            |
+| `isActive`     | boolean  | yes      | Whether the product is visible to shoppers. Set to `false` to deactivate without deleting.     |
 | `images`       | string[] | no       | Ordered list of image URLs. The array order is the display order. Defaults to `[]` if omitted. |
 | `discountType` | string   | no       | Free-form tag (`percentage`, `fixed`, …).                                                      |
 | `discount`     | number   | no       | Integer discount value (e.g. `10` for 10%).                                                    |

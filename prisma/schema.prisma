@@ -13,6 +13,7 @@ model Product {
   description  String
   slug         String           @unique
   images       String[]
+  isActive     Boolean          @default(true)
   discountType String?
   discount     Int?
   createdAt    DateTime         @default(now())

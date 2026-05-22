@@ -223,6 +223,11 @@ export const swaggerSpec = {
           name: { type: "string", example: "Neon Heart" },
           description: { type: "string", example: "Pink LED neon heart sign" },
           slug: { type: "string", example: "neon-heart" },
+          isActive: {
+            type: "boolean",
+            example: true,
+            description: "Whether the product is visible to shoppers. Defaults to true.",
+          },
           images: {
             type: "array",
             items: { type: "string" },
@@ -291,6 +296,7 @@ export const swaggerSpec = {
           name: { type: "string", example: "Neon Heart" },
           description: { type: "string", example: "Pink LED neon heart sign" },
           slug: { type: "string", example: "neon-heart" },
+          isActive: { type: "boolean", example: true },
           images: {
             type: "array",
             items: { type: "string" },
@@ -389,7 +395,7 @@ export const swaggerSpec = {
       },
       ProductInput: {
         type: "object",
-        required: ["name", "description", "slug"],
+        required: ["name", "description", "slug", "isActive"],
         properties: {
           name: { type: "string", example: "Neon Heart" },
           description: { type: "string", example: "Pink LED neon heart sign" },
@@ -398,6 +404,12 @@ export const swaggerSpec = {
             example: "neon-heart",
             description:
               "Unique URL-friendly identifier. Trimmed before saving.",
+          },
+          isActive: {
+            type: "boolean",
+            example: true,
+            description:
+              "Whether the product is visible to shoppers. Set to false to deactivate without deleting.",
           },
           images: {
             type: "array",
