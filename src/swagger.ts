@@ -660,9 +660,7 @@ export const swaggerSpec = {
           "`notificationPreferences`: 1 = EMAIL, 2 = SMS, 3 = WHATS_APP.",
         properties: {
           id: { type: "integer", example: 1 },
-          firstName: { type: "string", example: "Ada" },
-          paternalLastName: { type: "string", example: "Lovelace" },
-          maternalLastName: { type: "string", example: "Byron" },
+          fullName: { type: "string", example: "Ada Lovelace Byron" },
           email: { type: "string", format: "email", example: "ada@example.com" },
           phoneNumber: {
             type: "string",
@@ -690,16 +688,14 @@ export const swaggerSpec = {
       },
       UserInput: {
         type: "object",
-        required: ["firstName", "paternalLastName", "maternalLastName", "email", "role"],
+        required: ["fullName", "email", "role"],
         description:
           "Fields accepted when creating or updating a user. " +
           "`email` must be a valid, globally-unique address (returns 400 on duplicate). " +
           "`phoneNumber` is optional, max 20 characters. " +
           "`status` defaults to 1 (ACTIVE) when omitted.",
         properties: {
-          firstName: { type: "string", example: "Ada" },
-          paternalLastName: { type: "string", example: "Lovelace" },
-          maternalLastName: { type: "string", example: "Byron" },
+          fullName: { type: "string", example: "Ada Lovelace Byron" },
           email: { type: "string", format: "email", example: "ada@example.com" },
           phoneNumber: {
             type: "string",
@@ -2241,7 +2237,7 @@ export const swaggerSpec = {
         summary: "List users",
         description:
           "Returns a paginated list of users ordered by ID.\n\n" +
-          "Pass `search` to filter by first/paternal/maternal name, email, or phone number " +
+          "Pass `search` to filter by full name, email, or phone number " +
           "(case-insensitive substring match).\n\n" +
           "Pass `role` and/or `status` to filter. When omitted, all roles / statuses are returned.",
         parameters: [
@@ -2377,7 +2373,7 @@ export const swaggerSpec = {
         description:
           "Returns a paginated list of orders ordered by ID (newest first).\n\n" +
           "Pass `search` to filter by order ID (exact numeric match), tracking number, payment ID, " +
-          "or the related user's first/paternal/maternal name, email, or phone number (case-insensitive substring).\n\n" +
+          "or the related user's full name, email, or phone number (case-insensitive substring).\n\n" +
           "Pass `status` to filter by order status. Omit to return all statuses.",
         parameters: [
           ...paginationParameters,

@@ -391,7 +391,7 @@ Customer and admin accounts. Unlike products and categories (which are read by `
 
 The list endpoint supports the standard `page` / `perPage` pagination plus three optional filters:
 
-- `search` — case-insensitive substring match against first name, paternal/maternal last name, email, or phone number.
+- `search` — case-insensitive substring match against full name, email, or phone number.
 - `role` — one of `admin`, `client`, `super`. Omit to return all roles.
 - `status` — `0` (INACTIVE) or `1` (ACTIVE). Omit to return all statuses.
 
@@ -411,7 +411,7 @@ A purchase made by a user. Each order owns its `items[]` — those items store a
 
 The list endpoint supports the standard `page` / `perPage` pagination plus two optional filters:
 
-- `search` — matches an exact order ID (when the value is numeric), tracking number, payment ID, or any of the owning user's name fields, email, or phone number (case-insensitive substring).
+- `search` — matches an exact order ID (when the value is numeric), tracking number, payment ID, or the owning user's full name, email, or phone number (case-insensitive substring).
 - `status` — one of `pending`, `paid`, `processing`, `shipped`, `delivered`, `cancelled`, `refunded`. Omit to return all statuses.
 
 Example: `GET /api/orders?status=processing&search=lovelace&page=1&perPage=20`
@@ -660,9 +660,7 @@ Tags are independent of products. The same tag can be linked to many products, a
 ```ts
 // What you send for POST /users and PUT /users/:id
 type UserInput = {
-  firstName: string;        // required
-  paternalLastName: string; // required
-  maternalLastName: string; // required
+  fullName: string;         // required
   email: string;            // required — valid format, globally unique
   phoneNumber?: string;     // optional — max 20 characters
   role: "admin" | "client" | "super"; // required
@@ -674,9 +672,7 @@ type UserInput = {
 
 | Field                     | Type   | Required | Notes                                                            |
 | ------------------------- | ------ | -------- | ---------------------------------------------------------------- |
-| `firstName`               | string | yes      | Trimmed before saving.                                           |
-| `paternalLastName`        | string | yes      | Trimmed before saving.                                           |
-| `maternalLastName`        | string | yes      | Trimmed before saving.                                           |
+| `fullName`                | string | yes      | Trimmed before saving.                                           |
 | `email`                   | string | yes      | Must be a valid email and **globally unique**. Stored lowercased. |
 | `phoneNumber`             | string | no       | Max 20 characters. Stored as `null` when omitted.                |
 | `role`                    | enum   | yes      | One of `admin`, `client`, `super`.                               |
@@ -686,7 +682,7 @@ type UserInput = {
 
 Validation rules:
 
-- The three name fields and `email` are required and must be non-empty after trimming — `400` if missing.
+- `fullName` and `email` are required and must be non-empty after trimming — `400` if missing.
 - `email` must match a valid email pattern and be unique across all users — `400` with a clear message on duplicate.
 - `phoneNumber`, when provided, must be a string of at most 20 characters.
 - `role` must be one of the three allowed values; `status` must be `0` or `1`; `notificationPreferences` must be `1`, `2`, or `3`; `dateOfBirth` must match `YYYY-MM-DD` — each returns `400` if invalid.

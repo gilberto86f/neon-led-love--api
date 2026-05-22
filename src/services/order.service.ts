@@ -258,9 +258,7 @@ export const orderService = {
         ...(idMatch !== null ? [{ id: idMatch }] : []),
         { trackingNumber: { contains: search, mode: "insensitive" } },
         { paymentId: { contains: search, mode: "insensitive" } },
-        { user: { firstName: { contains: search, mode: "insensitive" } } },
-        { user: { paternalLastName: { contains: search, mode: "insensitive" } } },
-        { user: { maternalLastName: { contains: search, mode: "insensitive" } } },
+        { user: { fullName: { contains: search, mode: "insensitive" } } },
         { user: { email: { contains: search, mode: "insensitive" } } },
         { user: { phoneNumber: { contains: search, mode: "insensitive" } } },
       ];

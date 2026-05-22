@@ -12,9 +12,7 @@ export const NOTIFICATION_PREFERENCES = [1, 2, 3] as const; // 1 = EMAIL, 2 = SM
 export type NotificationPreference = (typeof NOTIFICATION_PREFERENCES)[number];
 
 export interface UserInput {
-  firstName: string;
-  paternalLastName: string;
-  maternalLastName: string;
+  fullName: string;
   email: string;
   phoneNumber?: string | null;
   role: UserRole;
@@ -34,9 +32,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const validate = (input: Partial<UserInput>) => {
-  requireString(input, "firstName");
-  requireString(input, "paternalLastName");
-  requireString(input, "maternalLastName");
+  requireString(input, "fullName");
 
   requireString(input, "email");
   if (!EMAIL_RE.test(String(input.email).trim())) {
@@ -79,9 +75,7 @@ const validate = (input: Partial<UserInput>) => {
 };
 
 const normalize = (input: UserInput) => ({
-  firstName: input.firstName.trim(),
-  paternalLastName: input.paternalLastName.trim(),
-  maternalLastName: input.maternalLastName.trim(),
+  fullName: input.fullName.trim(),
   email: input.email.trim().toLowerCase(),
   phoneNumber: input.phoneNumber?.trim() || null,
   role: input.role.trim(),
@@ -124,9 +118,7 @@ export const userService = {
     const where: Prisma.UserWhereInput = {};
     if (search) {
       where.OR = [
-        { firstName: { contains: search, mode: "insensitive" } },
-        { paternalLastName: { contains: search, mode: "insensitive" } },
-        { maternalLastName: { contains: search, mode: "insensitive" } },
+        { fullName: { contains: search, mode: "insensitive" } },
         { email: { contains: search, mode: "insensitive" } },
         { phoneNumber: { contains: search, mode: "insensitive" } },
       ];
