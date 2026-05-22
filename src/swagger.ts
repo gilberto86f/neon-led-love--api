@@ -371,6 +371,12 @@ export const swaggerSpec = {
           width: { type: "number", example: 30 },
           height: { type: "number", example: 15 },
           sizeUnit: { type: "string", enum: ["cm", "inch"], example: "cm" },
+          stock: {
+            type: "integer",
+            minimum: 0,
+            example: 12,
+            description: "Available inventory for this variant. Non-negative integer.",
+          },
           productId: { type: "integer", example: 1 },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
@@ -378,10 +384,11 @@ export const swaggerSpec = {
       },
       ProductVariantInput: {
         type: "object",
-        required: ["price", "width", "height", "sizeUnit"],
+        required: ["price", "width", "height", "sizeUnit", "stock"],
         description:
           "Fields accepted when creating or updating a variant. " +
-          "All four are required and must be positive numbers; `sizeUnit` must be `cm` or `inch`.",
+          "`price`, `width`, and `height` must be positive numbers; `sizeUnit` must be `cm` or `inch`; " +
+          "`stock` must be a non-negative integer.",
         properties: {
           price: {
             type: "number",
@@ -391,6 +398,12 @@ export const swaggerSpec = {
           width: { type: "number", example: 30, description: "Must be > 0." },
           height: { type: "number", example: 15, description: "Must be > 0." },
           sizeUnit: { type: "string", enum: ["cm", "inch"], example: "cm" },
+          stock: {
+            type: "integer",
+            minimum: 0,
+            example: 12,
+            description: "Available inventory. Must be ≥ 0.",
+          },
         },
       },
       ProductInput: {
@@ -1469,7 +1482,7 @@ export const swaggerSpec = {
         tags: ["Variants"],
         summary: "Create variant",
         description:
-          "Creates a new variant on the given product. All four fields are required and must be positive numbers; `sizeUnit` must be `cm` or `inch`.",
+          "Creates a new variant on the given product. `price`, `width`, and `height` must be positive numbers; `sizeUnit` must be `cm` or `inch`; `stock` must be a non-negative integer.",
         parameters: [{ $ref: "#/components/parameters/variantProductId" }],
         requestBody: {
           required: true,

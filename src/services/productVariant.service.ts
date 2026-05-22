@@ -8,6 +8,7 @@ export interface ProductVariant {
   width: number;
   height: number;
   sizeUnit: string;
+  stock: number;
 }
 
 export type ProductVariantInput = Omit<ProductVariant, "id">;
@@ -29,6 +30,8 @@ const validate = (input: Partial<ProductVariantInput>) => {
     throw new HttpError(400, 'Field must be a positive number: "height"');
   if (!input.sizeUnit || !["cm", "inch"].includes(String(input.sizeUnit).trim()))
     throw new HttpError(400, 'Field "sizeUnit" must be "cm" or "inch"');
+  if (typeof input.stock !== "number" || !Number.isInteger(input.stock) || input.stock < 0)
+    throw new HttpError(400, 'Field "stock" must be a non-negative integer');
 };
 
 const normalize = (input: ProductVariantInput) => ({
@@ -36,6 +39,7 @@ const normalize = (input: ProductVariantInput) => ({
   width: input.width,
   height: input.height,
   sizeUnit: String(input.sizeUnit).trim(),
+  stock: input.stock,
 });
 
 export const productVariantService = {

@@ -581,21 +581,24 @@ type ProductVariantInput = {
   width: number; // required — must be > 0
   height: number; // required — must be > 0
   sizeUnit: string; // required — must be "cm" or "inch"
+  stock: number; // required — non-negative integer (available inventory)
 };
 ```
 
-| Field      | Type   | Required | Notes                                             |
-| ---------- | ------ | -------- | ------------------------------------------------- |
-| `price`    | number | yes      | Price for this size. Must be > 0.                 |
-| `width`    | number | yes      | Width in `sizeUnit`. Must be > 0.                 |
-| `height`   | number | yes      | Height in `sizeUnit`. Must be > 0.                |
-| `sizeUnit` | string | yes      | Either `"cm"` or `"inch"`. Trimmed before saving. |
+| Field      | Type   | Required | Notes                                                      |
+| ---------- | ------ | -------- | ---------------------------------------------------------- |
+| `price`    | number | yes      | Price for this size. Must be > 0.                          |
+| `width`    | number | yes      | Width in `sizeUnit`. Must be > 0.                          |
+| `height`   | number | yes      | Height in `sizeUnit`. Must be > 0.                         |
+| `sizeUnit` | string | yes      | Either `"cm"` or `"inch"`. Trimmed before saving.          |
+| `stock`    | number | yes      | Available inventory for this variant. Non-negative integer. |
 
 Validation rules:
 
-- All four fields are required on every create/update — `400` if any is missing or invalid.
+- All five fields are required on every create/update — `400` if any is missing or invalid.
 - `price`, `width`, and `height` must be positive numbers.
 - `sizeUnit` must equal `"cm"` or `"inch"` exactly (case-sensitive after trim).
+- `stock` must be a non-negative integer (`0` is allowed; negatives and decimals are rejected).
 - Returns `404` if the product does not exist, or if the variant ID does not belong to the given product.
 
 ### Color option fields
