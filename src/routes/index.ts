@@ -7,9 +7,11 @@ import slideRoutes from './slide.routes';
 import imageRoutes from './image.routes';
 import userRoutes from './user.routes';
 import orderRoutes from './order.routes';
+import authRoutes from './auth.routes';
 
 const router = Router();
 
+router.use('/auth', authRoutes);
 router.use('/products', productRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/tags', tagRoutes);

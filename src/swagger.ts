@@ -81,8 +81,23 @@ export const swaggerSpec = {
       description:
         "Customer orders. Each order owns its `items[]` and stores a snapshot of product data (name, slug, image, price) at purchase time so historical records survive product changes.",
     },
+    {
+      name: "Auth",
+      description:
+        "Authentication endpoints. Register users, log in to obtain JWT access + refresh tokens, refresh them, log out, verify accounts, and read the currently-authenticated user. " +
+        "Send the access token as `Authorization: Bearer <token>` on protected endpoints.",
+    },
   ],
   components: {
+    securitySchemes: {
+      bearerAuth: {
+        type: "http",
+        scheme: "bearer",
+        bearerFormat: "JWT",
+        description:
+          "JWT access token. Obtain it from POST /api/auth/login and send it as `Authorization: Bearer <token>`. Access tokens expire after 30 minutes — call POST /api/auth/refresh to get a new one.",
+      },
+    },
     parameters: {
       productId: {
         name: "id",
@@ -707,6 +722,13 @@ export const swaggerSpec = {
             description: "YYYY-MM-DD",
             example: "1990-12-10",
           },
+          isVerified: {
+            type: "boolean",
+            example: false,
+            description:
+              "Whether the user's email has been verified via POST /api/auth/verify-account. " +
+              "Login is rejected for unverified accounts.",
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
@@ -1131,6 +1153,125 @@ export const swaggerSpec = {
           total: { type: "integer", example: 5 },
           page: { type: "integer", example: 1 },
           perPage: { type: "integer", example: 20 },
+        },
+      },
+      RegisterInput: {
+        type: "object",
+        required: ["fullName", "email", "password"],
+        description:
+          "Fields accepted by POST /api/auth/register. The user is created with `isVerified=false` and `status=1` (ACTIVE). " +
+          "A `verificationToken` is returned in the response — submit it to POST /api/auth/verify-account to verify the email. " +
+          "Email sending is not implemented yet; the token is returned directly for now.",
+        properties: {
+          fullName: { type: "string", example: "Juan Pérez" },
+          email: { type: "string", format: "email", example: "juan@example.com" },
+          password: {
+            type: "string",
+            format: "password",
+            minLength: 8,
+            example: "supersecret",
+            description: "Minimum 8 characters. Stored as a bcrypt hash.",
+          },
+          phoneNumber: {
+            type: "string",
+            nullable: true,
+            maxLength: 20,
+            example: "+52 55 1234 5678",
+          },
+          role: {
+            type: "string",
+            enum: ["admin", "client", "super"],
+            default: "client",
+            example: "client",
+            description: "Optional. Defaults to `client` when omitted.",
+          },
+        },
+      },
+      LoginInput: {
+        type: "object",
+        required: ["email", "password"],
+        properties: {
+          email: { type: "string", format: "email", example: "juan@example.com" },
+          password: { type: "string", format: "password", example: "supersecret" },
+        },
+      },
+      RefreshInput: {
+        type: "object",
+        required: ["refreshToken"],
+        properties: {
+          refreshToken: {
+            type: "string",
+            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            description: "The refresh token returned by POST /api/auth/login.",
+          },
+        },
+      },
+      VerifyAccountInput: {
+        type: "object",
+        required: ["token"],
+        properties: {
+          token: {
+            type: "string",
+            example: "f1c8a9b2e6d04a3f8c4d5e6f7a8b9c0d",
+            description: "The `verificationToken` returned by POST /api/auth/register.",
+          },
+        },
+      },
+      AuthTokens: {
+        type: "object",
+        properties: {
+          accessToken: {
+            type: "string",
+            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            description: "JWT access token. Lifetime: 30 minutes.",
+          },
+          refreshToken: {
+            type: "string",
+            example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            description:
+              "JWT refresh token. Lifetime: 30 days. Hashed (sha256) and stored on the user. " +
+              "Issuing a new pair (refresh or re-login) rotates and invalidates the previous refresh token.",
+          },
+          user: { $ref: "#/components/schemas/User" },
+        },
+      },
+      RegisterResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 201 },
+          data: {
+            type: "object",
+            properties: {
+              user: { $ref: "#/components/schemas/User" },
+              verificationToken: {
+                type: "string",
+                example: "f1c8a9b2e6d04a3f8c4d5e6f7a8b9c0d",
+                description:
+                  "Hex token to be sent to POST /api/auth/verify-account. " +
+                  "Exposed in the response for now because email sending is not implemented yet.",
+              },
+            },
+          },
+        },
+      },
+      AuthTokensResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/AuthTokens" },
+        },
+      },
+      LogoutResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: {
+            type: "object",
+            properties: { loggedOut: { type: "boolean", example: true } },
+          },
         },
       },
       ImageUploadResponse: {
@@ -2536,6 +2677,168 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Auth ────────────────────────────────────────────────────────────────
+    "/api/auth/register": {
+      post: {
+        tags: ["Auth"],
+        summary: "Register a new user",
+        description:
+          "Creates a new user with `isVerified=false`. Returns the user and a one-time `verificationToken` " +
+          "that must be sent to POST /api/auth/verify-account before the user can log in.\n\n" +
+          "Email sending is **not** implemented yet — the token is returned directly in the response so a " +
+          "frontend or test client can complete the flow manually.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/RegisterInput" },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "User registered",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/RegisterResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
+    "/api/auth/login": {
+      post: {
+        tags: ["Auth"],
+        summary: "Log in",
+        description:
+          "Validates credentials and returns an access token (30 min) + refresh token (30 days).\n\n" +
+          "Returns `401` for unknown email or wrong password, `403` if the account is inactive " +
+          "(`status=0`) or not verified (`isVerified=false`).",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/LoginInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Login successful",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/AuthTokensResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+        },
+      },
+    },
+    "/api/auth/refresh": {
+      post: {
+        tags: ["Auth"],
+        summary: "Refresh access token",
+        description:
+          "Exchanges a valid refresh token for a brand-new access + refresh token pair. " +
+          "The previous refresh token is invalidated (rotation). " +
+          "Returns `401` if the token is missing, malformed, expired, or does not match the stored hash for the user.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/RefreshInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "New tokens issued",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/AuthTokensResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+        },
+      },
+    },
+    "/api/auth/verify-account": {
+      post: {
+        tags: ["Auth"],
+        summary: "Verify a user's email",
+        description:
+          "Marks the user matching `token` as verified and clears the stored verification token. " +
+          "Idempotent: calling it for an already-verified user returns the user unchanged.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/VerifyAccountInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Account verified",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UserResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
+    "/api/auth/logout": {
+      post: {
+        tags: ["Auth"],
+        summary: "Log out",
+        description:
+          "Invalidates the refresh token stored on the user (clears `refreshTokenHash` and `refreshTokenExpiresAt`). " +
+          "The access token itself is **not** invalidated server-side — it will keep working until it expires (max 30 min). " +
+          "The frontend should also discard the access token on logout.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: "Logout successful",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/LogoutResponse" },
+              },
+            },
+          },
+          401: errorResponse,
+        },
+      },
+    },
+    "/api/auth/me": {
+      get: {
+        tags: ["Auth"],
+        summary: "Get the authenticated user",
+        description: "Returns the user matching the access token's `sub` claim.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          200: {
+            description: "Current user",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/UserResponse" },
+              },
+            },
+          },
+          401: errorResponse,
           404: errorResponse,
         },
       },

@@ -27,7 +27,7 @@ Backend API for an e-commerce site that sells LED neon signs. This document is w
 
 A small REST API that exposes endpoints to **list, create, read, update, and delete products** (the LED neon signs). Your Angular app will call these endpoints over HTTP to display products, manage them in an admin panel, etc.
 
-This is an **MVP** (Minimum Viable Product) — the smallest possible version that works end-to-end so you can plug in the frontend and start iterating. No authentication yet.
+This is an **MVP** (Minimum Viable Product) — the smallest possible version that works end-to-end so you can plug in the frontend and start iterating. It includes a JWT-based authentication layer (`/api/auth/...`) to power both the storefront (APP) and the admin (CMS).
 
 ---
 
@@ -128,7 +128,26 @@ Open the new [.env](.env) file. The default values match the Docker setup, so fo
 ```
 DATABASE_URL="postgresql://nll:nll@localhost:5432/neon_led_love?schema=public"
 PORT=3000
+
+# --- JWT Authentication ---
+JWT_ACCESS_SECRET="dev-access-secret-change-me"
+JWT_REFRESH_SECRET="dev-refresh-secret-change-me"
+JWT_ACCESS_EXPIRES_IN="30m"
+JWT_REFRESH_EXPIRES_IN="30d"
+JWT_REFRESH_TTL_DAYS=30
+BCRYPT_SALT_ROUNDS=10
 ```
+
+| Variable                    | What it controls                                                                                      |
+| --------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `JWT_ACCESS_SECRET`         | Secret used to sign access tokens. **Change it in production**; use a long random string.             |
+| `JWT_REFRESH_SECRET`        | Secret used to sign refresh tokens. Must be different from the access secret. **Change in prod**.     |
+| `JWT_ACCESS_EXPIRES_IN`     | Lifetime of an access token (e.g. `30m`, `1h`). Default: `30m`.                                       |
+| `JWT_REFRESH_EXPIRES_IN`    | Lifetime of a refresh token (e.g. `30d`). Default: `30d`.                                             |
+| `JWT_REFRESH_TTL_DAYS`      | Refresh-token expiry stored in the database in days. Should match `JWT_REFRESH_EXPIRES_IN`.           |
+| `BCRYPT_SALT_ROUNDS`        | bcrypt cost factor for hashing passwords. Default: `10`.                                              |
+
+> If `NODE_ENV=production`, the server refuses to start unless `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are set to non-default values.
 
 Breaking down `DATABASE_URL`:
 
@@ -206,6 +225,27 @@ If you get this, the server is working.
 ## 7. Trying the API
 
 The API base URL is `http://localhost:3000/api`. All product endpoints live under `/products`, all category endpoints under `/categories`, and all tag endpoints under `/tags`.
+
+**Auth**
+
+JWT-based authentication. Register a user, verify the account, then log in to receive an `accessToken` (30 min) + `refreshToken` (30 days). Send the access token as `Authorization: Bearer <token>` on protected endpoints.
+
+| Method | Path                  | Body (JSON)                          | Protected | What it does                                              |
+| ------ | --------------------- | ------------------------------------ | --------- | --------------------------------------------------------- |
+| POST   | `/auth/register`      | [Register](#auth-register-fields)    | no        | Create a new user. Returns a `verificationToken`.         |
+| POST   | `/auth/verify-account`| `{ "token": "..." }`                 | no        | Verify the user's email using the token from register.    |
+| POST   | `/auth/login`         | `{ "email", "password" }`            | no        | Returns `{ accessToken, refreshToken, user }`.            |
+| POST   | `/auth/refresh`       | `{ "refreshToken": "..." }`          | no        | Returns a fresh access + refresh token pair (rotated).    |
+| POST   | `/auth/logout`        | —                                    | yes       | Invalidates the stored refresh token for the user.        |
+| GET    | `/auth/me`            | —                                    | yes       | Returns the user matching the access token.               |
+
+Notes:
+
+- Login is rejected with `403` for accounts where `status=0` (INACTIVE) or `isVerified=false`.
+- Refresh tokens are stored as a SHA-256 hash on the user row (`refreshTokenHash`). Issuing a new pair rotates the previous one, so an old refresh token is immediately useless.
+- The access token is **stateless**: logging out clears the refresh token but does not invalidate the access token, which keeps working until it expires (max 30 min). Discard the access token client-side on logout.
+- Email sending is **not implemented yet**. The verification token is returned directly in the register response so the frontend can complete the flow manually. Once email delivery is wired up, the token will be sent over email and removed from the register response.
+- Protect future endpoints by adding the `jwtAuthGuard` middleware from [src/middlewares/authGuard.ts](src/middlewares/authGuard.ts). Use `requireRole("admin")` to gate routes by role.
 
 **Products**
 
@@ -663,6 +703,68 @@ Validation rules:
 
 Tags are independent of products. The same tag can be linked to many products, and a product can have many tags — see the **Product-Tag relations** endpoints to manage links.
 
+### Auth register fields
+
+```ts
+// POST /api/auth/register
+type RegisterInput = {
+  fullName: string;       // required
+  email: string;          // required — valid format, globally unique
+  password: string;       // required — minimum 8 characters
+  phoneNumber?: string;   // optional — max 20 characters
+  role?: "admin" | "client" | "super"; // optional — defaults to "client"
+};
+```
+
+| Field         | Type   | Required | Notes                                                                |
+| ------------- | ------ | -------- | -------------------------------------------------------------------- |
+| `fullName`    | string | yes      | Trimmed before saving.                                               |
+| `email`       | string | yes      | Must be valid and globally unique. Stored lowercased.                |
+| `password`    | string | yes      | Minimum 8 characters. Stored as a bcrypt hash; raw password is never persisted. |
+| `phoneNumber` | string | no       | Max 20 characters.                                                   |
+| `role`        | enum   | no       | One of `admin`, `client`, `super`. Defaults to `client`.             |
+
+Successful registration returns:
+
+```json
+{
+  "success": 1,
+  "status": 201,
+  "data": {
+    "user": { "id": 7, "fullName": "Juan Pérez", "email": "juan@example.com", "isVerified": false, ... },
+    "verificationToken": "f1c8a9b2e6d04a3f8c4d5e6f7a8b9c0d..."
+  }
+}
+```
+
+Send the `verificationToken` to `POST /api/auth/verify-account` to mark the account as verified. Until then, login responds with `403`.
+
+### Auth login fields
+
+```ts
+// POST /api/auth/login
+type LoginInput = {
+  email: string;
+  password: string;
+};
+```
+
+Successful response shape:
+
+```json
+{
+  "success": 1,
+  "status": 200,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": { "id": 7, "fullName": "Juan Pérez", "email": "juan@example.com", ... }
+  }
+}
+```
+
+The frontend stores both tokens (typically: access token in memory, refresh token in `httpOnly` cookie or secure storage), attaches the access token as `Authorization: Bearer <accessToken>` to API calls, and uses the refresh token to obtain new pairs.
+
 ### User fields
 
 ```ts
@@ -697,6 +799,8 @@ Validation rules:
 - Returns `404` from `GET /users/:id`, `PUT /users/:id`, or `DELETE /users/:id` when no user matches.
 
 > Addresses and payment methods are part of the broader user model but are **not** managed through these endpoints yet — they will get their own resources later. Orders **are** implemented — see [Order fields](#order-fields).
+
+User responses also include a read-only `isVerified` boolean indicating whether the email has been verified via `POST /api/auth/verify-account`. Users created through `POST /api/users` are not given a password and cannot log in — for self-service signup, use `POST /api/auth/register` instead. Sensitive fields (`passwordHash`, `verificationToken`, `refreshTokenHash`) are **never** included in any user response.
 
 ### Order fields
 

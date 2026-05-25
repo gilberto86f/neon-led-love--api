@@ -84,6 +84,20 @@ const normalize = (input: UserInput) => ({
   dateOfBirth: input.dateOfBirth?.trim() || null,
 });
 
+const PUBLIC_USER_SELECT = {
+  id: true,
+  fullName: true,
+  email: true,
+  phoneNumber: true,
+  role: true,
+  status: true,
+  notificationPreferences: true,
+  dateOfBirth: true,
+  isVerified: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 const ensureUniqueEmail = async (email: string, excludeUserId?: number) => {
   const existing = await prisma.user.findFirst({
     where: {
@@ -95,7 +109,7 @@ const ensureUniqueEmail = async (email: string, excludeUserId?: number) => {
 };
 
 const getUserById = async (id: number) => {
-  const user = await prisma.user.findUnique({ where: { id } });
+  const user = await prisma.user.findUnique({ where: { id }, select: PUBLIC_USER_SELECT });
   if (!user) throw new HttpError(404, `User not found ${id}`);
   return user;
 };
@@ -126,7 +140,13 @@ export const userService = {
     if (role !== undefined) where.role = role;
     if (status !== undefined) where.status = status;
     const [results, total] = await prisma.$transaction([
-      prisma.user.findMany({ where, orderBy: { id: "asc" }, skip, take: perPage }),
+      prisma.user.findMany({
+        where,
+        orderBy: { id: "asc" },
+        skip,
+        take: perPage,
+        select: PUBLIC_USER_SELECT,
+      }),
       prisma.user.count({ where }),
     ]);
     return { results, total };
@@ -138,7 +158,7 @@ export const userService = {
     validate(input);
     const normalized = normalize(input);
     await ensureUniqueEmail(normalized.email);
-    return prisma.user.create({ data: normalized });
+    return prisma.user.create({ data: normalized, select: PUBLIC_USER_SELECT });
   },
 
   updateUser: async (id: number, input: UserInput) => {
@@ -146,7 +166,7 @@ export const userService = {
     validate(input);
     const normalized = normalize(input);
     await ensureUniqueEmail(normalized.email, id);
-    return prisma.user.update({ where: { id }, data: normalized });
+    return prisma.user.update({ where: { id }, data: normalized, select: PUBLIC_USER_SELECT });
   },
 
   deleteUser: async (id: number) => {
