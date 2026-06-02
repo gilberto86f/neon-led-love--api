@@ -19,6 +19,7 @@ export interface UserInput {
   status?: UserStatus;
   notificationPreferences?: NotificationPreference | null;
   dateOfBirth?: string | null;
+  isGuest?: boolean;
 }
 
 const requireString = (input: Partial<UserInput>, field: keyof UserInput) => {
@@ -72,6 +73,12 @@ const validate = (input: Partial<UserInput>) => {
       throw new HttpError(400, `Field "dateOfBirth" must be a date in YYYY-MM-DD format`);
     }
   }
+
+  if (input.isGuest !== undefined && input.isGuest !== null) {
+    if (typeof input.isGuest !== "boolean") {
+      throw new HttpError(400, `Field must be a boolean: "isGuest"`);
+    }
+  }
 };
 
 const normalize = (input: UserInput) => ({
@@ -82,6 +89,7 @@ const normalize = (input: UserInput) => ({
   status: input.status ?? 1,
   notificationPreferences: input.notificationPreferences ?? null,
   dateOfBirth: input.dateOfBirth?.trim() || null,
+  isGuest: input.isGuest ?? false,
 });
 
 const PUBLIC_USER_SELECT = {
@@ -94,6 +102,7 @@ const PUBLIC_USER_SELECT = {
   notificationPreferences: true,
   dateOfBirth: true,
   isVerified: true,
+  isGuest: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -121,12 +130,14 @@ export const userService = {
     search,
     role,
     status,
+    isGuest,
   }: {
     page: number;
     perPage: number;
     search?: string;
     role?: UserRole;
     status?: UserStatus;
+    isGuest?: boolean;
   }) => {
     const skip = (page - 1) * perPage;
     const where: Prisma.UserWhereInput = {};
@@ -139,6 +150,7 @@ export const userService = {
     }
     if (role !== undefined) where.role = role;
     if (status !== undefined) where.status = status;
+    if (isGuest !== undefined) where.isGuest = isGuest;
     const [results, total] = await prisma.$transaction([
       prisma.user.findMany({
         where,

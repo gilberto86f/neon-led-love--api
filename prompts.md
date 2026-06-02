@@ -1,330 +1,235 @@
-## Implement JWT Authentication for the project.
+👨‍💻
+
+# Add a new optional property to the `User` type:
+
+```TypeScript
+isGuest?: boolean;
+```
 
 Goal:
 
-Add a scalable authentication foundation for APP and CMS.
-
-Implement:
-
-- Register
-- Login
-- Email verification flow
-- Access tokens
-- Refresh tokens
-- Logout
-
-Use secure JWT-based authentication architecture.
+Support guest checkout flows where customers can place orders without creating a full account.
 
 ---
 
-## Authentication architecture
+## User type update
 
-Create a dedicated:
+Add:
 
 ```TypeScript
-AuthService
+isGuest?: boolean;
 ```
-
-Responsibilities:
-
-- register users
-- login users
-- generate/refresh tokens
-- validate accounts
-- logout
-- token validation
-
-Keep auth logic centralized.
 
 ---
 
-## User model updates
+## Default behavior
 
-Add authentication-related fields to `User`.
+When creating a user:
 
-Suggested additions:
+If `isGuest` is not provided:
 
 ```TypeScript
-passwordHash: string;
-isVerified: boolean;
-verificationToken?: string;
-refreshToken?: string;
-refreshTokenExpiresAt?: Date;
+isGuest = false;
 ```
 
-Do NOT store raw passwords.
-
----
-
-## Password handling
+This should happen at the backend/service level, not only in the frontend.
 
 Requirements:
 
-- hash passwords before storage
-- never return passwordHash in responses
-
-Suggested:
-
-```TypeScript
-bcrypt
-```
-
-or equivalent secure hashing library.
+- Existing users remain non-guest users
+- Existing create-user flows continue working without changes
 
 ---
 
-## JWT tokens
+## User creation and update
 
-Implement:
+Update:
 
-### Access token
+- POST - /api/users - Create user
+- PUT - /api/users/{id} - Update user
 
-Short-lived token.
-
-Requirements:
-
-- expiration: 30 minutes
-- used for authenticated API requests
-
-Suggested payload:
-
-```TypeScript
-{
-  sub: user.id,
-  email: user.email
-}
-```
-
----
-
-### Refresh token
-
-Long-lived token.
-
-Used to:
-
-- refresh expired access tokens
-- preserve login session
-
-Requirements:
-
-- securely generated
-- stored hashed if possible
-- revocable
-
----
-
-## Endpoints
-
-Implement:
-
-```http
-POST /api/auth/register
-POST /api/auth/login
-POST /api/auth/refresh
-POST /api/auth/logout
-POST /api/auth/verify-account
-GET  /api/auth/me
-```
-
----
-
-## Register
-
-### Endpoint
-
-```http
-POST /api/auth/register
-```
-
-Requirements:
-
-- create new user
-- hash password
-- generate verification token
-- set:
-  - `isVerified = false`
-
-Example payload:
+to support:
 
 ```JSON
 {
-  "fullName": "Juan Pérez",
-  "email": "juan@example.com",
-  "password": "12345678"
+  "isGuest": true
 }
 ```
 
----
-
-## Login
-
-### Endpoint
-
-```http
-POST /api/auth/login
-```
-
-Requirements:
-
-- validate email/password
-- reject invalid credentials
-- reject unverified accounts
-- generate:
-  - accessToken
-  - refreshToken
-
-Example response:
+while still defaulting to:
 
 ```JSON
 {
-  "accessToken": "...",
-  "refreshToken": "...",
-  "user": {}
+  "isGuest": false
 }
 ```
 
+when omitted.
+
 ---
 
-## Email verification
+## Authentication behavior
 
-Implement verification flow structure only.
+Guest users should not affect current authentication behavior.
 
-Do NOT implement actual email sending yet.
+For now:
+
+- registration works as today
+- login works as today
+- account verification works as today
+
+The new property should only prepare the project for future guest checkout functionality.
+
+---
+
+## Future guest checkout support
+
+This property will later allow:
+
+```
+Checkout
+  ↓
+Customer does not want an account
+  ↓
+Create User with isGuest = true
+  ↓
+Create Order linked to that User
+```
+
+without requiring:
+
+- password
+- email verification
+- login
+
+DO NOT implement this yet.
+
+---
+
+## Filters
+
+Prepare the Users list endpoint to easily support future filtering (`isGuest` should be an optional filter):
+
+```http
+GET /users?isGuest=true
+GET /users?isGuest=false
+```
+
+---
+
+## Data migration
 
 Requirements:
 
-- generate verification token
-- create verification endpoint
-- validate token
-- mark account as verified
-
-Example:
-
-```http
-POST /api/auth/verify-account
-```
-
-Payload:
-
-```JSON
-{
-  "token": "abc123"
-}
-```
-
----
-
-## Refresh token
-
-### Endpoint
-
-```http
-POST /api/auth/refresh
-```
-
-Requirements:
-
-- validate refresh token
-- generate new access token
-- optionally rotate refresh token
-
----
-
-## Logout
-
-### Endpoint
-
-```http
-POST /api/auth/logout
-```
-
-Requirements:
-
-- invalidate/remove refresh token
-- clear session state
-
----
-
-## Protected routes
-
-Add JWT authentication guard/middleware.
-
-Protect future authenticated endpoints.
-
-Suggested:
+- existing users should be treated as:
 
 ```TypeScript
-JwtAuthGuard
+isGuest = false
 ```
 
----
-
-## Security requirements
-
-Requirements:
-
-- never expose passwordHash
-- validate email uniqueness
-- hash passwords securely
-- validate JWT expiration
-- invalidate refresh tokens on logout
-
----
-
-## Validation
-
-### Register
-
-Requirements:
-
-- valid email
-- minimum password length
-- unique email
-
-Suggested password minimum:
-
-```TypeScript
-8
-```
-
----
+- avoid breaking existing user records
 
 Goal:
 
-- Create a scalable secure authentication foundation for APP and CMS.
+- Add the foundation for guest checkout while preserving all current user and authentication behavior.
 
 ---
 
-# Claude.code
+# 🤖
 
 ## Summary
 
-JWT authentication is wired up. Migration applied to the DB; code in place.
+Added an optional isGuest?: boolean to the User resource, defaulting to false at the service layer — foundation for future guest checkout, with no change to existing auth/create flows.
 
-### What I added
+### Schema + migration
 
-- Deps: bcryptjs, jsonwebtoken (+ their @types/).
-- Schema (prisma/schema.prisma): passwordHash, isVerified, verificationToken (unique), refreshTokenHash, refreshTokenExpiresAt on User. Migration applied: prisma/migrations/20260525000000_add_auth_fields/migration.sql.
-- Auth service (src/services/auth.service.ts): register, login, refresh (with rotation), logout, verifyAccount, getCurrentUser, verifyAccessToken. Passwords bcrypt-hashed; refresh tokens stored as SHA-256 hash.
-- JWT guard (src/middlewares/authGuard.ts): jwtAuthGuard and requireRole(...). Attaches req.auth = { sub, email, role }.
-- Controller + routes (src/controllers/auth.controller.ts, src/routes/auth.routes.ts) mounted at /api/auth in src/routes/index.ts.
-- Endpoints: POST /api/auth/register, POST /api/auth/login, POST /api/auth/refresh, POST /api/auth/logout (protected), POST /api/auth/verify-account, GET /api/auth/me (protected).
-- Sensitive field protection (src/services/user.service.ts): all prisma.user queries now select a public projection that excludes passwordHash, verificationToken, and refreshTokenHash.
-- Config (src/utils/authConfig.ts) + new env vars in .env and .env.example. Production requires real secrets.
-- Docs: src/swagger.ts gets a new Auth tag, bearerAuth security scheme, request/response schemas, and full paths. README.md has a new Auth section and Auth register fields / Auth login fields reference.
+- schema.prisma — added isGuest Boolean @default(false) to User
+- New migration 20260602195333_add_user_is_guest: ALTER TABLE "User" ADD COLUMN "isGuest" BOOLEAN NOT NULL DEFAULT false — the DEFAULT false backfills all existing rows as non-guest, so no records break.
 
-### Action required on your side
+### Service (user.service.ts)
 
-1. Stop the dev server (Ctrl+C in the terminal running npm run dev).
-2. Regenerate the Prisma client: npm run prisma:generate. (It failed to regenerate now because the dev server was holding query_engine-windows.dll.node open.)
-3. Restart: npm run dev.
-4. In VS Code, if Prisma type errors still show: Command Palette → "TypeScript: Restart TS Server" (per CLAUDE.md).
+- Added isGuest?: boolean to UserInput; validates it's a boolean when provided (400 otherwise)
+- normalize sets isGuest: input.isGuest ?? false — so omitting it always yields false, including the existing POST /api/users and POST /api/auth/register flows
+- Added isGuest: true to PUBLIC_USER_SELECT (now returned in responses)
+- getUsers accepts an optional isGuest filter → where.isGuest
 
-### Notable design choices
+### Controller (user.controller.ts) — parses ?isGuest=true|false on the list endpoint; any other value returns 400.
 
-- Email sending not implemented (per the task). POST /auth/register returns the verificationToken in the response so the frontend can complete the flow. When email is wired up later, drop it from the response.
-- Login rejects unverified (isVerified=false) and inactive (status=0) accounts with 403.
-- Refresh tokens rotate on every /refresh call (and on /login). The previous one is immediately invalid because only the latest hash is stored.
-- Access tokens are stateless: /logout clears the refresh-token state but the access token keeps working until it expires (≤30 min). That's the standard JWT trade-off; document it client-side.
-- The pre-existing POST /api/users admin endpoint stays unchanged — users created that way have no password and can't log in. Self-service signup goes through /auth/register.
+Docs (same change)
+
+- swagger.ts — isGuest on User + UserInput schemas, and an isGuest query param on GET /api/users
+- README.md — User type, field table, validation rules, and the list-filter section (now "four optional filters")
+
+**Authentication** — untouched. Register/login/verify behave exactly as before; guests just default in.
+
+⚠️ Per your choice, I stopped your API dev server and Prisma Studio to free the locked query-engine DLL. Restart them when ready:
+
+`npm run dev`
+`npm run prisma:studio`
+As CLAUDE.md notes, if VS Code still shows stale Prisma type errors, restart the TS server (Command Palette → "TypeScript: Restart TS server").
+
+Note: guest checkout itself (creating a guest + linked order without password/verification) was not implemented — only the foundation, as requested.
+
+👨‍💻
+
+# Add new cart validate service
+
+- This new service will be used after the user clicks on complete purchase, in the Cart page. Before navigating to the checkout page, we need to validate the cart products
+- Validate all relevant information from the selected product variant, including:
+  - Stock
+  - Price
+  - Product is active
+  - Variant sizes
+  - Discount (type, amount)
+  - subtotalAmount
+- If there is any problem, show an apropiate message, like: 'The price of product `Bulbasaur` has changed' or 'The product `Bulbasaur` is out of stock in that productVariant'
+- Add the newest information of all products (so the front-end can update the cart products (stored in the LocalStorage))
+
+## expected type of data being sent
+
+```json
+{
+  "items": [
+    {
+      "productId": 7,
+      "productSlug": "bulbasaur",
+      "productName": "Bulbasaur",
+      "productImageUrl": "/uploads/products/1778699383999-t517gwc-1.png",
+      "variantId": 10,
+      "width": 75,
+      "height": 75,
+      "sizeUnit": "cm",
+      "originalUnitPrice": 1480,
+      "unitPrice": 1465.2,
+      "discountType": "percentage",
+      "discount": 1,
+      "quantity": 1,
+      "subtotalAmount": 1465.2,
+      "dateAddedToCart": "2026-06-02T05:29:01.795Z"
+    },
+    {
+      "productId": 13,
+      "productSlug": "pikachu",
+      "productName": "Pikachu",
+      "productImageUrl": "/uploads/products/1780378326491-m0gvx1h-25.png",
+      "variantId": 12,
+      "width": 80,
+      "height": 90,
+      "sizeUnit": "cm",
+      "originalUnitPrice": 1489,
+      "unitPrice": 1484,
+      "discountType": "amount",
+      "discount": 5,
+      "quantity": 10,
+      "subtotalAmount": 14840,
+      "dateAddedToCart": "2026-06-02T05:36:12.372Z"
+    }
+  ],
+  "subtotalAmount": 16305.2,
+  "shippingAmount": 0,
+  "taxAmount": 0,
+  "discountAmount": 0,
+  "totalAmount": 16305.2,
+  "couponCode": "55454"
+}
+```

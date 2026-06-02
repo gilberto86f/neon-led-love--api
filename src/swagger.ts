@@ -729,6 +729,13 @@ export const swaggerSpec = {
               "Whether the user's email has been verified via POST /api/auth/verify-account. " +
               "Login is rejected for unverified accounts.",
           },
+          isGuest: {
+            type: "boolean",
+            example: false,
+            description:
+              "Whether this is a guest account (created during guest checkout, without password/verification/login). " +
+              "Defaults to false. Reserved for future guest-checkout support.",
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },
@@ -763,6 +770,12 @@ export const swaggerSpec = {
             nullable: true,
             description: "YYYY-MM-DD",
             example: "1990-12-10",
+          },
+          isGuest: {
+            type: "boolean",
+            default: false,
+            example: false,
+            description: "Marks the user as a guest account. Defaults to false when omitted.",
           },
         },
       },
@@ -2412,7 +2425,8 @@ export const swaggerSpec = {
           "Returns a paginated list of users ordered by ID.\n\n" +
           "Pass `search` to filter by full name, email, or phone number " +
           "(case-insensitive substring match).\n\n" +
-          "Pass `role` and/or `status` to filter. When omitted, all roles / statuses are returned.",
+          "Pass `role` and/or `status` to filter. When omitted, all roles / statuses are returned.\n\n" +
+          "Pass `isGuest=true` for guest accounts only, `isGuest=false` for non-guest accounts only, or omit it to get all.",
         parameters: [
           ...paginationParameters,
           {
@@ -2433,6 +2447,12 @@ export const swaggerSpec = {
             in: "query",
             description: "Filter by account status: 0 = INACTIVE, 1 = ACTIVE.",
             schema: { type: "integer", enum: [0, 1] },
+          },
+          {
+            name: "isGuest",
+            in: "query",
+            description: "Filter by guest accounts: true = guests only, false = non-guests only.",
+            schema: { type: "boolean" },
           },
         ],
         responses: {

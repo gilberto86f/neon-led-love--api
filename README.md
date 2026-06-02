@@ -429,13 +429,14 @@ Customer and admin accounts. Unlike products and categories (which are read by `
 | PUT    | `/users/:id`  | [User](#user-fields) | Replace a user            |
 | DELETE | `/users/:id`  | —                    | Delete a user             |
 
-The list endpoint supports the standard `page` / `perPage` pagination plus three optional filters:
+The list endpoint supports the standard `page` / `perPage` pagination plus four optional filters:
 
 - `search` — case-insensitive substring match against full name, email, or phone number.
 - `role` — one of `admin`, `client`, `super`. Omit to return all roles.
 - `status` — `0` (INACTIVE) or `1` (ACTIVE). Omit to return all statuses.
+- `isGuest` — `true` (guests only) or `false` (non-guests only). Only the literal strings `"true"` and `"false"` are recognized — any other value returns `400`. Omit to return both.
 
-Example: `GET /api/users?role=client&status=1&search=ada&page=1&perPage=20`
+Example: `GET /api/users?role=client&status=1&isGuest=false&search=ada&page=1&perPage=20`
 
 **Orders**
 
@@ -777,6 +778,7 @@ type UserInput = {
   status?: 0 | 1;           // optional — 0 = INACTIVE, 1 = ACTIVE (defaults to 1)
   notificationPreferences?: 1 | 2 | 3; // optional — 1 = EMAIL, 2 = SMS, 3 = WHATS_APP
   dateOfBirth?: string;     // optional — "YYYY-MM-DD"
+  isGuest?: boolean;        // optional — marks a guest account (defaults to false)
 };
 ```
 
@@ -789,6 +791,7 @@ type UserInput = {
 | `status`                  | number | no       | `0` (INACTIVE) or `1` (ACTIVE). Defaults to `1`.                 |
 | `notificationPreferences` | number | no       | `1` (EMAIL), `2` (SMS), or `3` (WHATS_APP). `null` when omitted. |
 | `dateOfBirth`             | string | no       | `YYYY-MM-DD` format. `null` when omitted.                        |
+| `isGuest`                 | boolean | no      | Marks a guest account. Defaults to `false` when omitted.        |
 
 Validation rules:
 
@@ -796,6 +799,7 @@ Validation rules:
 - `email` must match a valid email pattern and be unique across all users — `400` with a clear message on duplicate.
 - `phoneNumber`, when provided, must be a string of at most 20 characters.
 - `role` must be one of the three allowed values; `status` must be `0` or `1`; `notificationPreferences` must be `1`, `2`, or `3`; `dateOfBirth` must match `YYYY-MM-DD` — each returns `400` if invalid.
+- `isGuest`, when provided, must be a boolean — `400` otherwise. When omitted it defaults to `false`, so existing create flows and existing records remain non-guest users.
 - Returns `404` from `GET /users/:id`, `PUT /users/:id`, or `DELETE /users/:id` when no user matches.
 
 > Addresses and payment methods are part of the broader user model but are **not** managed through these endpoints yet — they will get their own resources later. Orders **are** implemented — see [Order fields](#order-fields).

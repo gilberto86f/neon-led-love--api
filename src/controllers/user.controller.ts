@@ -44,7 +44,23 @@ export const userController = {
         status = raw as UserStatus;
       }
 
-      const { results, total } = await userService.getUsers({ page, perPage, search, role, status });
+      let isGuest: boolean | undefined;
+      if (req.query.isGuest !== undefined) {
+        const raw = String(req.query.isGuest);
+        if (raw !== "true" && raw !== "false") {
+          throw new HttpError(400, `Invalid isGuest (must be "true" or "false")`);
+        }
+        isGuest = raw === "true";
+      }
+
+      const { results, total } = await userService.getUsers({
+        page,
+        perPage,
+        search,
+        role,
+        status,
+        isGuest,
+      });
       res.status(200).json(okList(results, { total, page, perPage }));
     } catch (err) {
       next(err);
