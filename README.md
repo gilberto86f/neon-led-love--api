@@ -421,13 +421,16 @@ Uploaded files are stored in `uploads/` at the project root and are **not commit
 
 Customer and admin accounts. Unlike products and categories (which are read by `slug`), users are read and written by their numeric `id`. `email` is **globally unique**.
 
-| Method | Path          | Body (JSON)          | What it does              |
-| ------ | ------------- | -------------------- | ------------------------- |
-| GET    | `/users`      | —                    | List users (paginated)    |
-| GET    | `/users/:id`  | —                    | Get one user by ID        |
-| POST   | `/users`      | [User](#user-fields) | Create a new user         |
-| PUT    | `/users/:id`  | [User](#user-fields) | Replace a user            |
-| DELETE | `/users/:id`  | —                    | Delete a user             |
+| Method | Path                          | Body (JSON)          | What it does                                   |
+| ------ | ----------------------------- | -------------------- | ---------------------------------------------- |
+| GET    | `/users`                      | —                    | List users (paginated)                         |
+| GET    | `/users/check-email?email=…`  | —                    | Check if a user exists with this email (yes/no) |
+| GET    | `/users/:id`                  | —                    | Get one user by ID                             |
+| POST   | `/users`                      | [User](#user-fields) | Create a new user                              |
+| PUT    | `/users/:id`                  | [User](#user-fields) | Replace a user                                 |
+| DELETE | `/users/:id`                  | —                    | Delete a user                                  |
+
+> **`check-email` is a lightweight existence check.** It returns only `{ email, exists }` — never user data — so guest-checkout and registration flows can ask "is this email taken?" without pulling a full user record. See [Checking if an email exists](#checking-if-an-email-exists).
 
 The list endpoint supports the standard `page` / `perPage` pagination plus four optional filters:
 
@@ -811,6 +814,32 @@ Validation rules:
 - `role` must be one of the three allowed values; `status` must be `0` or `1`; `notificationPreferences` must be `1`, `2`, or `3`; `dateOfBirth` must match `YYYY-MM-DD` — each returns `400` if invalid.
 - `isGuest`, when provided, must be a boolean — `400` otherwise. When omitted it defaults to `false`, so existing create flows and existing records remain non-guest users.
 - Returns `404` from `GET /users/:id`, `PUT /users/:id`, or `DELETE /users/:id` when no user matches.
+
+#### Checking if an email exists
+
+`GET /users/check-email?email=…` answers one question — *does a user already exist with this email?* — and nothing else. It's meant for guest checkout and registration, where the frontend only needs a yes/no before deciding whether to log the user in, offer guest checkout, or start a fresh sign-up. It deliberately does **not** return the user, so it can't be used to fish for account details.
+
+```http
+GET /api/users/check-email?email=ada@example.com
+```
+
+```json
+{
+  "success": 1,
+  "status": 200,
+  "data": {
+    "email": "ada@example.com",
+    "exists": true
+  }
+}
+```
+
+Notes:
+
+- `email` is a **required** query parameter and must be a valid email address — a missing or malformed value returns `400`.
+- The check is **case-insensitive**: the value is trimmed and lowercased before matching, the same way emails are stored, so `Ada@Example.com` and `ada@example.com` are treated as the same address.
+- The returned `email` is the normalized (trimmed, lowercased) form that was actually checked.
+- `exists` is simply `true` or `false`. The endpoint always returns `200` for a valid email, whether or not a match was found.
 
 > Addresses and payment methods are part of the broader user model but are **not** managed through these endpoints yet — they will get their own resources later. Orders **are** implemented — see [Order fields](#order-fields).
 

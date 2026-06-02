@@ -67,6 +67,16 @@ export const userController = {
     }
   },
 
+  checkEmail: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const email = req.query.email !== undefined ? String(req.query.email) : "";
+      const result = await userService.checkEmail(email);
+      res.status(200).json(ok(result));
+    } catch (err) {
+      next(err);
+    }
+  },
+
   getById: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseId(req.params.id);

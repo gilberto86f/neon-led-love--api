@@ -809,6 +809,29 @@ export const swaggerSpec = {
           perPage: { type: "integer", example: 20 },
         },
       },
+      EmailCheckResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: {
+            type: "object",
+            properties: {
+              email: {
+                type: "string",
+                format: "email",
+                example: "ada@example.com",
+                description: "The normalized (trimmed, lowercased) email that was checked.",
+              },
+              exists: {
+                type: "boolean",
+                example: true,
+                description: "Whether a user already exists with this email.",
+              },
+            },
+          },
+        },
+      },
       ShippingAddress: {
         type: "object",
         required: [
@@ -2619,6 +2642,41 @@ export const swaggerSpec = {
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/UserResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
+    "/api/users/check-email": {
+      get: {
+        tags: ["Users"],
+        summary: "Check whether an email is already registered",
+        description:
+          "Answers a single question: does a user already exist with this email? " +
+          "Intended for guest-checkout and registration flows that only need a yes/no, " +
+          "without fetching full user information.\n\n" +
+          "The `email` query parameter is required and must be a valid email — otherwise `400`. " +
+          "The lookup is case-insensitive (the email is trimmed and lowercased before matching, " +
+          "the same way emails are stored). This endpoint **never** returns user data, only " +
+          "`{ email, exists }`.",
+        parameters: [
+          {
+            name: "email",
+            in: "query",
+            required: true,
+            description: "The email address to check. Trimmed and lowercased before matching.",
+            schema: { type: "string", format: "email" },
+            example: "ada@example.com",
+          },
+        ],
+        responses: {
+          200: {
+            description: "Existence result",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/EmailCheckResponse" },
               },
             },
           },

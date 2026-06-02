@@ -166,6 +166,19 @@ export const userService = {
 
   getUserById,
 
+  checkEmail: async (rawEmail: string) => {
+    if (typeof rawEmail !== "string" || !rawEmail.trim()) {
+      throw new HttpError(400, `Query parameter is required: "email"`);
+    }
+    const email = rawEmail.trim().toLowerCase();
+    if (!EMAIL_RE.test(email)) {
+      throw new HttpError(400, `Query parameter must be a valid email: "email"`);
+    }
+    // Lightweight existence check only — never returns user data.
+    const existing = await prisma.user.findFirst({ where: { email }, select: { id: true } });
+    return { email, exists: existing !== null };
+  },
+
   createUser: async (input: UserInput) => {
     validate(input);
     const normalized = normalize(input);
