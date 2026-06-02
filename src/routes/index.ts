@@ -7,6 +7,7 @@ import slideRoutes from './slide.routes';
 import imageRoutes from './image.routes';
 import userRoutes from './user.routes';
 import orderRoutes from './order.routes';
+import cartRoutes from './cart.routes';
 import authRoutes from './auth.routes';
 
 const router = Router();
@@ -20,5 +21,6 @@ router.use('/slides', slideRoutes);
 router.use('/images', imageRoutes);
 router.use('/users', userRoutes);
 router.use('/orders', orderRoutes);
+router.use('/cart', cartRoutes);
 
 export default router;

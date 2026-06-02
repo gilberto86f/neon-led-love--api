@@ -82,6 +82,14 @@ export const swaggerSpec = {
         "Customer orders. Each order owns its `items[]` and stores a snapshot of product data (name, slug, image, price) at purchase time so historical records survive product changes.",
     },
     {
+      name: "Cart",
+      description:
+        "Pre-checkout cart validation. Re-checks the cart the frontend holds against the live database " +
+        "right before checkout: confirms each product/variant still exists and is active, checks stock, " +
+        "re-derives prices, recalculates totals, and returns refreshed item data so the frontend can sync " +
+        "its cart. Independent from Orders — it neither reads nor writes orders.",
+    },
+    {
       name: "Auth",
       description:
         "Authentication endpoints. Register users, log in to obtain JWT access + refresh tokens, refresh them, log out, verify accounts, and read the currently-authenticated user. " +
@@ -969,6 +977,131 @@ export const swaggerSpec = {
           total: { type: "integer", example: 1 },
           page: { type: "integer", example: 1 },
           perPage: { type: "integer", example: 20 },
+        },
+      },
+      CartItem: {
+        type: "object",
+        required: [
+          "productId",
+          "productSlug",
+          "productName",
+          "variantId",
+          "width",
+          "height",
+          "sizeUnit",
+          "originalUnitPrice",
+          "unitPrice",
+          "quantity",
+          "subtotalAmount",
+        ],
+        description:
+          "A single cart line as held by the frontend (e.g. in LocalStorage). The price/variant " +
+          "fields are the values the shopper last saw; the validate endpoint re-checks them and " +
+          "returns a refreshed copy in its response.",
+        properties: {
+          productId: { type: "integer", example: 7 },
+          productSlug: { type: "string", example: "bulbasaur" },
+          productName: { type: "string", example: "Bulbasaur" },
+          productImageUrl: {
+            type: "string",
+            nullable: true,
+            example: "/uploads/products/1778699383999-t517gwc-1.png",
+          },
+          variantId: { type: "integer", example: 10 },
+          width: { type: "number", example: 75 },
+          height: { type: "number", example: 75 },
+          sizeUnit: { type: "string", enum: ["cm", "inch"], example: "cm" },
+          originalUnitPrice: {
+            type: "number",
+            example: 1480,
+            description: "The variant's list price before any product discount.",
+          },
+          unitPrice: {
+            type: "number",
+            example: 1465.2,
+            description: "Price after the product discount is applied.",
+          },
+          discountType: {
+            type: "string",
+            nullable: true,
+            example: "percentage",
+            description: 'Product discount type, e.g. "percentage" or "fixed".',
+          },
+          discount: { type: "integer", nullable: true, example: 1 },
+          quantity: { type: "integer", minimum: 1, example: 1 },
+          subtotalAmount: {
+            type: "number",
+            example: 1465.2,
+            description: "unitPrice * quantity for this line.",
+          },
+          dateAddedToCart: {
+            type: "string",
+            nullable: true,
+            format: "date-time",
+            example: "2026-06-02T05:29:01.795Z",
+            description: "Preserved as-is in the validate response.",
+          },
+        },
+      },
+      CartValidationInput: {
+        type: "object",
+        required: ["items"],
+        description:
+          "The cart the frontend currently holds, sent to POST /api/cart/validate. " +
+          "`items` is required and must contain at least one line. The amount fields are optional; " +
+          "`shippingAmount`, `taxAmount`, and `discountAmount` are passed through (defaulting to 0) " +
+          "until shipping/tax/coupon support lands. `couponCode` is accepted for forward compatibility " +
+          "but is not applied yet.",
+        properties: {
+          items: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/CartItem" },
+          },
+          subtotalAmount: { type: "number", example: 16305.2 },
+          shippingAmount: { type: "number", example: 0 },
+          taxAmount: { type: "number", example: 0 },
+          discountAmount: { type: "number", example: 0 },
+          totalAmount: { type: "number", example: 16305.2 },
+          couponCode: { type: "string", nullable: true, example: "55454" },
+        },
+      },
+      CartValidationResult: {
+        type: "object",
+        description:
+          "Result of validating a cart. `isValid` is true only when `messages` is empty. " +
+          "`items` is the refreshed cart — every line carries the newest product name, image, variant " +
+          "dimensions, price, discount, and recalculated subtotal, so the frontend can overwrite its " +
+          "stored cart without further requests.",
+        properties: {
+          isValid: { type: "boolean", example: false },
+          messages: {
+            type: "array",
+            items: { type: "string" },
+            example: [
+              'The price of product "Bulbasaur" has changed.',
+              'The product "Pikachu" only has 3 units available.',
+            ],
+            description: "One human-readable message per problem found. Empty when the cart is valid.",
+          },
+          items: {
+            type: "array",
+            items: { $ref: "#/components/schemas/CartItem" },
+            description: "Refreshed cart lines with the latest data from the database.",
+          },
+          subtotalAmount: { type: "number", example: 15000 },
+          shippingAmount: { type: "number", example: 0 },
+          taxAmount: { type: "number", example: 0 },
+          discountAmount: { type: "number", example: 0 },
+          totalAmount: { type: "number", example: 15000 },
+        },
+      },
+      CartValidationResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/CartValidationResult" },
         },
       },
       CustomPrices: {
@@ -2698,6 +2831,44 @@ export const swaggerSpec = {
           },
           400: errorResponse,
           404: errorResponse,
+        },
+      },
+    },
+    // ── Cart ────────────────────────────────────────────────────────────────
+    "/api/cart/validate": {
+      post: {
+        tags: ["Cart"],
+        summary: "Validate a cart before checkout",
+        description:
+          "Re-checks the cart the frontend holds against the live database, immediately before checkout. " +
+          "For every line it verifies the product exists and is active, the variant still exists and matches " +
+          "(width/height/sizeUnit), there is enough stock, and the price (originalUnitPrice, unitPrice, " +
+          "discountType, discount) and per-line subtotal are still correct.\n\n" +
+          "Always returns `200` with `isValid` and a list of `messages` (one per problem). Business problems " +
+          "such as a stale price or low stock are **not** HTTP errors — only a malformed request body returns " +
+          "`400`. The response also returns a **refreshed** copy of every item plus recalculated totals so the " +
+          "frontend can sync its cart without extra requests.\n\n" +
+          "`couponCode` is accepted but not yet applied; shipping/tax/discount amounts are passed through " +
+          "(defaulting to 0) for now.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CartValidationInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description:
+              "Validation result. Check `isValid`; `messages` lists any problems and `items` holds the refreshed cart.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CartValidationResponse" },
+              },
+            },
+          },
+          400: errorResponse,
         },
       },
     },

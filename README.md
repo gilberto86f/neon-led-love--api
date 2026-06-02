@@ -459,6 +459,16 @@ Example: `GET /api/orders?status=processing&search=lovelace&page=1&perPage=20`
 
 Deleting an order also deletes its items (cascade). Deleting a user who has orders returns `400` with a message like `Cannot delete user 5: user has 3 orders. Delete them first.` — remove the user's orders first.
 
+**Cart**
+
+A pre-checkout safety check. The frontend keeps the shopper's cart in LocalStorage; prices, stock, and products can all change while the cart sits there. This endpoint re-checks the cart against the live database right before the shopper reaches the Checkout page, and hands back both a list of problems and a refreshed cart.
+
+| Method | Path             | Body (JSON)                          | What it does                                  |
+| ------ | ---------------- | ------------------------------------ | --------------------------------------------- |
+| POST   | `/cart/validate` | [Cart](#cart-validation-fields)      | Validate the cart and return refreshed totals |
+
+It does **not** touch orders — validating a cart neither reads nor writes any order. Think of it as the step between "Cart" and "Checkout": `Cart → Validate Cart → Checkout → Create Order`. See [Cart validation fields](#cart-validation-fields) for the request/response shape.
+
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 
 ### Pagination
@@ -891,6 +901,93 @@ Validation rules:
 **Why items are snapshots:** if a product is renamed or repriced after an order ships, the order should still show the data the customer actually saw and paid for. `productId` is stored as a reference but is **not** a foreign key — the product can be deleted without breaking historical orders.
 
 **PUT replaces everything, including items:** updating an order deletes all existing items and recreates them from the request body, inside a single transaction. If you only need to change the status or tracking number, you still need to send the full order payload.
+
+### Cart validation fields
+
+`POST /cart/validate` takes the cart your frontend is holding and re-checks every line against the live database. It is meant to run once, right before the shopper reaches the Checkout page.
+
+```ts
+// What you send
+type CartValidationInput = {
+  items: CartItem[];          // required — at least one line
+  subtotalAmount?: number;    // optional — see "passed through" below
+  shippingAmount?: number;    // optional
+  taxAmount?: number;         // optional
+  discountAmount?: number;    // optional
+  totalAmount?: number;       // optional
+  couponCode?: string;        // optional — accepted but NOT applied yet
+};
+
+type CartItem = {
+  productId: number;          // required — positive integer
+  productSlug: string;        // required
+  productName: string;        // required
+  productImageUrl?: string;   // optional
+  variantId: number;          // required — positive integer
+  width: number;              // required
+  height: number;             // required
+  sizeUnit: string;           // required — e.g. "cm", "inch"
+  originalUnitPrice: number;  // required — variant list price
+  unitPrice: number;          // required — price after product discount
+  discountType?: string;      // optional — "percentage" | "fixed"
+  discount?: number;          // optional
+  quantity: number;           // required — positive integer
+  subtotalAmount: number;     // required — unitPrice * quantity
+  dateAddedToCart?: string;   // optional — preserved as-is
+};
+
+// What you get back (inside the usual `data` envelope)
+type CartValidationResult = {
+  isValid: boolean;           // true only when messages is empty
+  messages: string[];         // one human-readable message per problem
+  items: CartItem[];          // refreshed cart — newest data for every line
+  subtotalAmount: number;     // recalculated from the refreshed line subtotals
+  shippingAmount: number;     // passed through (default 0)
+  taxAmount: number;          // passed through (default 0)
+  discountAmount: number;     // passed through (default 0)
+  totalAmount: number;        // subtotal + shipping + tax − discount
+};
+```
+
+**What gets checked, per item:**
+
+| Check    | What it validates                                                      | Example message                                          |
+| -------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
+| Product  | The product still exists and is active                                | `The product "Bulbasaur" is no longer available.` / `The product "Bulbasaur" is inactive.` |
+| Variant  | The variant still exists and its `width` / `height` / `sizeUnit` match | `The selected variant for "Bulbasaur" is no longer available.` |
+| Stock    | `quantity <= variant.stock`                                           | `The product "Pikachu" only has 3 units available.` / `The product "Pikachu" is out of stock.` |
+| Pricing  | `originalUnitPrice`, `unitPrice`, `discountType`, `discount` still match | `The price of product "Bulbasaur" has changed.`         |
+| Subtotal | The line's `subtotalAmount` equals `unitPrice * quantity`             | `The subtotal for "Bulbasaur" has changed.`             |
+
+**How it behaves:**
+
+- It **always** returns `200`. A stale price or low stock is a *finding*, not an HTTP error — findings go into `messages` and flip `isValid` to `false`. Only a malformed request body (missing `items`, wrong field types, etc.) returns `400`.
+- `items` in the response is a **refreshed** copy of your cart: each line carries the newest `productName`, `productImageUrl`, variant dimensions, `originalUnitPrice`, `unitPrice`, `discountType`, `discount`, and recalculated `subtotalAmount`. `quantity` and `dateAddedToCart` are preserved from your request. Use this to overwrite your LocalStorage cart in one shot — no extra requests needed.
+- `productImageUrl` keeps the image you sent if it still belongs to the product; otherwise it falls back to the product's first image (or `null`).
+- Totals are recalculated: `subtotalAmount` is the sum of the refreshed line subtotals; `totalAmount` is `subtotal + shipping + tax − discount`. `shippingAmount`, `taxAmount`, and `discountAmount` are currently **passed through** from your request (defaulting to `0`) — there is no shipping/tax/coupon engine yet.
+- `couponCode` is accepted so the frontend contract stays stable, but **coupons are not implemented yet** — the code is set up so that coupon validation, shipping rules, minimum-order checks, regional availability, etc. can be added here later. This endpoint is intended to become the single source of truth before checkout.
+
+**Example response** (one stale price, one low-stock line):
+
+```json
+{
+  "success": 1,
+  "status": 200,
+  "data": {
+    "isValid": false,
+    "messages": [
+      "The price of product \"Bulbasaur\" has changed.",
+      "The product \"Pikachu\" only has 3 units available."
+    ],
+    "items": [ /* ...refreshed items... */ ],
+    "subtotalAmount": 15000,
+    "shippingAmount": 0,
+    "taxAmount": 0,
+    "discountAmount": 0,
+    "totalAmount": 15000
+  }
+}
+```
 
 ### Custom Prices fields
 
