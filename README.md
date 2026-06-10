@@ -507,6 +507,28 @@ Examples:
 
 Filters return an empty list (not a 404) when no products match. `categoryId` returns `400` if it is not a positive integer. Blank `search` and `tagSlug` values are ignored. `isActive` only recognizes the literal strings `"true"` and `"false"` — any other value (including `"1"`, `"0"`, or blank) is treated as if the param were omitted.
 
+### Sorting products
+
+`GET /products` accepts two sorting parameters. They work together with every filter above and with pagination.
+
+| Parameter       | Type   | Allowed values                       | Default     | Description                  |
+| --------------- | ------ | ------------------------------------ | ----------- | ---------------------------- |
+| `sortBy`        | string | `id`, `name`, `createdAt`, `updatedAt` | `updatedAt` | Field to order the list by.  |
+| `sortDirection` | string | `asc`, `desc`                        | `desc`      | Ascending or descending.     |
+
+**Default ordering:** when you don't pass `sortBy`/`sortDirection`, products come back sorted by `updatedAt` descending — most recently modified first. (This is a change from the previous default of `id` ascending; if you relied on the old order, pass `?sortBy=id&sortDirection=asc` explicitly.)
+
+**Validation:** unlike the filters above, an unrecognized `sortBy` or `sortDirection` value returns `400` rather than being ignored — for example `?sortBy=price` returns `Invalid sortBy (must be one of: id, name, createdAt, updatedAt)`. Omitting a param falls back to its default; only an explicitly wrong value is rejected.
+
+Examples:
+
+- `GET /api/products?sortBy=name&sortDirection=asc` — A→Z by name
+- `GET /api/products?sortBy=createdAt&sortDirection=desc` — newest products first
+- `GET /api/products?sortBy=updatedAt&sortDirection=desc` — recently updated first (the default)
+- `GET /api/products?tagSlug=pokemon&sortBy=name&sortDirection=asc` — Pokémon-tagged products, A→Z
+- `GET /api/products?categoryId=3&page=2&perPage=20&sortBy=updatedAt&sortDirection=desc` — filter + paginate + sort together
+- `GET /api/products?search=pika&isActive=true&sortBy=createdAt&sortDirection=desc` — active matches for "pika", newest first
+
 ### Filtering categories
 
 `GET /categories` accepts additional filter query parameters that can be combined freely:

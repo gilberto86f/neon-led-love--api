@@ -1,5 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
-import { productService } from '../services/product.service';
+import {
+  productService,
+  PRODUCT_SORT_FIELDS,
+  SORT_DIRECTIONS,
+  ProductSortField,
+  SortDirection,
+} from '../services/product.service';
 import { ok, okList } from '../utils/apiResponse';
 import { HttpError } from '../utils/HttpError';
 
@@ -30,7 +36,26 @@ export const productController = {
       let isActive: boolean | undefined;
       if (req.query.isActive === "true") isActive = true;
       else if (req.query.isActive === "false") isActive = false;
-      const { results, total } = await productService.list({ page, perPage, search, categoryId, tagSlug, isActive });
+
+      let sortBy: ProductSortField | undefined;
+      if (req.query.sortBy !== undefined) {
+        const raw = String(req.query.sortBy);
+        if (!PRODUCT_SORT_FIELDS.includes(raw as ProductSortField)) {
+          throw new HttpError(400, `Invalid sortBy (must be one of: ${PRODUCT_SORT_FIELDS.join(", ")})`);
+        }
+        sortBy = raw as ProductSortField;
+      }
+
+      let sortDirection: SortDirection | undefined;
+      if (req.query.sortDirection !== undefined) {
+        const raw = String(req.query.sortDirection);
+        if (!SORT_DIRECTIONS.includes(raw as SortDirection)) {
+          throw new HttpError(400, `Invalid sortDirection (must be one of: ${SORT_DIRECTIONS.join(", ")})`);
+        }
+        sortDirection = raw as SortDirection;
+      }
+
+      const { results, total } = await productService.list({ page, perPage, search, categoryId, tagSlug, isActive, sortBy, sortDirection });
       res.status(200).json(okList(results, { total, page, perPage }));
     } catch (err) {
       next(err);

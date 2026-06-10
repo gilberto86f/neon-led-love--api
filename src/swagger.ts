@@ -1517,8 +1517,10 @@ export const swaggerSpec = {
         tags: ["Products"],
         summary: "List products",
         description:
-          "Returns a paginated list of all products ordered by ID.\n\n" +
-          "Pass `search` to filter by name/description, `categoryId` to filter by category, `tagSlug` to filter by tag, `isActive` to filter by active/inactive — or any combination.",
+          "Returns a paginated list of products.\n\n" +
+          "Pass `search` to filter by name/description, `categoryId` to filter by category, `tagSlug` to filter by tag, `isActive` to filter by active/inactive — or any combination.\n\n" +
+          "Use `sortBy` + `sortDirection` to order the results. Sorting works together with every filter and with pagination. " +
+          "When omitted, results default to `sortBy=updatedAt&sortDirection=desc` (most recently modified first).",
         parameters: [
           ...paginationParameters,
           {
@@ -1547,6 +1549,24 @@ export const swaggerSpec = {
             description:
               "Filter by active status. `true` → only active, `false` → only inactive. Omit to return both.",
             schema: { type: "boolean" },
+          },
+          {
+            name: "sortBy",
+            in: "query",
+            description:
+              "Field to sort by. Must be one of the allowed values — any other value returns 400. Defaults to `updatedAt`.",
+            schema: {
+              type: "string",
+              enum: ["id", "name", "createdAt", "updatedAt"],
+              default: "updatedAt",
+            },
+          },
+          {
+            name: "sortDirection",
+            in: "query",
+            description:
+              "Sort direction. `asc` (ascending) or `desc` (descending) — any other value returns 400. Defaults to `desc`.",
+            schema: { type: "string", enum: ["asc", "desc"], default: "desc" },
           },
         ],
         responses: {

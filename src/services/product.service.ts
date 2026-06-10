@@ -14,6 +14,12 @@ export interface Product {
 
 export type ProductInput = Product;
 
+export const PRODUCT_SORT_FIELDS = ["id", "name", "createdAt", "updatedAt"] as const;
+export type ProductSortField = (typeof PRODUCT_SORT_FIELDS)[number];
+
+export const SORT_DIRECTIONS = ["asc", "desc"] as const;
+export type SortDirection = (typeof SORT_DIRECTIONS)[number];
+
 const requireString = (input: Partial<ProductInput>, field: keyof Product) => {
   const value = input[field];
   if (!value || typeof value !== "string" || !value.trim()) {
@@ -105,6 +111,8 @@ export const productService = {
     categoryId,
     tagSlug,
     isActive,
+    sortBy = "updatedAt",
+    sortDirection = "desc",
   }: {
     page: number;
     perPage: number;
@@ -112,6 +120,8 @@ export const productService = {
     categoryId?: number;
     tagSlug?: string;
     isActive?: boolean;
+    sortBy?: ProductSortField;
+    sortDirection?: SortDirection;
   }) => {
     const skip = (page - 1) * perPage;
     const where: Prisma.ProductWhereInput = {};
@@ -130,8 +140,9 @@ export const productService = {
     if (isActive !== undefined) {
       where.isActive = isActive;
     }
+    const orderBy: Prisma.ProductOrderByWithRelationInput = { [sortBy]: sortDirection };
     const [results, total] = await prisma.$transaction([
-      prisma.product.findMany({ where, orderBy: { id: "asc" }, skip, take: perPage, include: { variants: true, colorOptions: true, tags: true } }),
+      prisma.product.findMany({ where, orderBy, skip, take: perPage, include: { variants: true, colorOptions: true, tags: true } }),
       prisma.product.count({ where }),
     ]);
     return { results, total };

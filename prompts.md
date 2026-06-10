@@ -1,68 +1,173 @@
 👨‍💻
 
-# Add Email Check Endpoint
+# Add Sorting Support to GET `/api/products`
 
-Add a new endpoint to determine whether a user already exists with a given email address.
+Extend:
+
+```http
+GET /api/products
+```
+
+to support sorting.
 
 Goal:
 
-Support guest checkout and registration flows without requiring unnecessary requests to retrieve full user information.
+Allow product lists to be sorted by common fields while preserving all existing filters and pagination behavior.
 
 ---
 
-## Endpoint
+## Supported Fields
 
-```http
-GET /api/users/check-email?email=usertest@email.com
-```
-
----
-
-## Purpose
-
-This endpoint should answer only:
+Allow sorting by:
 
 ```TypeScript
-Does a user exist with this email?
+id
+name
+createdAt
+updatedAt
 ```
 
-It should not return full user information.
+Only these fields should be accepted.
 
 ---
 
-## Request
+## Query Parameters
 
-Example:
+Add:
+
+```TypeScript
+sortBy?: 'id' | 'name' | 'createdAt' | 'updatedAt';
+sortDirection?: 'asc' | 'desc';
+```
+
+---
+
+## Examples
+
+Sort by ID ascending:
 
 ```http
-GET /api/users/check-email?email=ada@example.com
+GET /api/products?sortBy=id&sortDirection=asc
+```
+
+Sort by ID descending:
+
+```http
+GET /api/products?sortBy=id&sortDirection=desc
+```
+
+Sort by name ascending:
+
+```http
+GET /api/products?sortBy=name&sortDirection=asc
+```
+
+Sort by name descending:
+
+```http
+GET /api/products?sortBy=name&sortDirection=desc
+```
+
+Sort by newest products:
+
+```http
+GET /api/products?sortBy=createdAt&sortDirection=desc
+```
+
+Sort by recently updated:
+
+```http
+GET /api/products?sortBy=updatedAt&sortDirection=desc
 ```
 
 ---
 
-# 🤖
+## Compatibility with Existing Filters
+
+Sorting must work together with all existing filters.
+
+Examples:
+
+```http
+GET /api/products?tagSlug=pokemon&sortBy=name&sortDirection=asc
+```
+
+```http
+GET /api/products?categoryId=3&page=2&perPage=20&sortBy=updatedAt&sortDirection=desc
+```
+
+```http
+GET /api/products?search=pika&isActive=true&sortBy=createdAt&sortDirection=desc
+```
+
+---
+
+## Backend Validation
+
+Validate:
+
+```TypeScript
+sortBy
+sortDirection
+```
+
+If an invalid value is provided:
+
+Either:
+
+```TypeScript
+fallback to defaults
+```
+
+or:
+
+```http
+400 Bad Request
+```
+
+Use whichever validation approach is already used elsewhere in the API.
+
+---
+
+## Default Behavior
+
+If sorting is not provided:
+
+Keep the current behavior.
+
+Recommended default:
+
+```TypeScript
+sortBy = 'updatedAt';
+sortDirection = 'desc';
+```
+
+This shows recently modified products first.
+
+---
+
+# 👨‍💻
 
 ## What I added
 
-Endpoint: GET `/api/users/check-email?email=… `— returns only `{ email, exists }`, never user data, exactly as the brief required for guest-checkout/registration flows.
+`GET /api/products` now accepts `sortBy` and `sortDirection`, working alongside every existing filter and pagination.
 
-### Files changed:
+**Files changed**:
 
-- src/services/user.service.ts — checkEmail(): validates the param (required + valid format via the existing EMAIL_RE), normalizes it (trim().toLowerCase() — matching how emails are stored), and does a minimal findFirst selecting only { id: true }.
-- src/controllers/user.controller.ts — thin checkEmail handler, wraps with ok(), forwards errors via next(err).
-- src/routes/user.routes.ts — GET /check-email registered before /:id.
-- src/swagger.ts — EmailCheckResponse schema + /api/users/check-email path.
-- README.md — Users table row + a "Checking if an email exists" section.
+- `src/services/product.service.ts` — exported `PRODUCT_SORT_FIELDS` (`id`, `name`, `createdAt`, `updatedAt`) and `SORT_DIRECTIONS` (`asc`, `desc`) as the single source of truth; `list()` now builds `orderBy` from the two params, defaulting to `updatedAt` / `desc`.
+- `src/controllers/product.controller.ts` — parses and validates both params, throwing `400` for unrecognized values.
+- `src/swagger.ts` — documented both query params (with enums + defaults) and the new default-ordering note.
+- `README.md` — new "Sorting products" section with the allowed values, defaults, validation behavior, and all the combined-with-filters examples from the brief.
 
-### The one subtle thing worth flagging
+## Decisions made
 
-Route ordering matters here. Express matches in registration order, and the existing GET /:id would otherwise capture check-email as an id, fail parseId, and return 400 Invalid id. Placing check-email before /:id fixes that — I verified the build, but the route precedence is the thing to keep in mind if routes are ever reordered.
+Default ordering → `updatedAt desc`, per your answer. This changes the endpoint's previous default (`id asc`), so I called that out explicitly in both the README and Swagger so the frontend dev knows to pass `?sortBy=id&sortDirection=asc` if anything relied on the old order.
+Invalid values → `400` (e.g. `?sortBy=price`), rather than silently falling back. The spec allowed either; I matched the dominant pattern in the codebase — this same endpoint already returns `400` for a bad `categoryId`/`limit`, and the order/user list endpoints 400 on bad status/role. An omitted param still falls back to its default; only an explicitly wrong value is rejected.
 
-### Two design choices I made (easy to change)
+## One thing worth noting
 
-- Case-insensitive match. Emails are stored lowercased (see normalize in the service), so I lowercase the query value before matching — otherwise Ada@Example.com would wrongly report exists: false. The response echoes back the normalized email that was actually checked.
-- Lookup ignores isGuest. It reports exists: true for any user with that email, including guest accounts. That's the safest default for "is this email taken?", but if guest-checkout should treat guest records as "not really registered," I can add an ?includeGuests=false filter — let me know.
+`orderBy` is built as `{ [sortBy]: sortDirection }`. Because the allowed values are a fixed, server-defined whitelist (validated in the controller and typed as `ProductSortField`/`SortDirection`), there's no injection surface here — an arbitrary string can never reach the Prisma `orderBy` key. The `Prisma.ProductOrderByWithRelationInput` type annotation also keeps it honest if the field list ever changes.
 
-I couldn't hit a live DB from here, but once it's running you can smoke-test with:
+I couldn't exercise it against a live DB from here, but once it's running:
 
-`curl "http://localhost:3000/api/users/check-email?email=ada@example.com"`
+`curl "http://localhost:3000/api/products?sortBy=name&sortDirection=asc"`
