@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from "express";
 import { orderService, ORDER_STATUSES, OrderStatus } from "../services/order.service";
 import { ok, okList } from "../utils/apiResponse";
 import { HttpError } from "../utils/HttpError";
+import { isStaff, canAccessOrder } from "../utils/authorization";
+import { FORBIDDEN_MESSAGE } from "../middlewares/authGuard";
 
 const parseId = (raw: string | string[]): number => {
   const id = Number(raw);
@@ -29,7 +31,16 @@ export const orderController = {
         status = raw as OrderStatus;
       }
 
-      const { results, total } = await orderService.getOrders({ page, perPage, search, status });
+      // Staff (super/admin) see all orders; a client is scoped to their own.
+      const userId = req.auth && !isStaff(req.auth.role) ? req.auth.sub : undefined;
+
+      const { results, total } = await orderService.getOrders({
+        page,
+        perPage,
+        search,
+        status,
+        userId,
+      });
       res.status(200).json(okList(results, { total, page, perPage }));
     } catch (err) {
       next(err);
@@ -40,6 +51,9 @@ export const orderController = {
     try {
       const id = parseId(req.params.id);
       const order = await orderService.getOrderById(id);
+      if (!req.auth || !canAccessOrder(req.auth, order.userId)) {
+        throw new HttpError(403, FORBIDDEN_MESSAGE);
+      }
       res.status(200).json(ok(order));
     } catch (err) {
       next(err);

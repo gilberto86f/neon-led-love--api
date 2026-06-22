@@ -8,6 +8,8 @@ import {
 } from "../services/user.service";
 import { ok, okList } from "../utils/apiResponse";
 import { HttpError } from "../utils/HttpError";
+import { canViewUser, canManageUser } from "../utils/authorization";
+import { FORBIDDEN_MESSAGE } from "../middlewares/authGuard";
 
 const parseId = (raw: string | string[]): number => {
   const id = Number(raw);
@@ -80,6 +82,9 @@ export const userController = {
   getById: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseId(req.params.id);
+      if (!req.auth || !canViewUser(req.auth, id)) {
+        throw new HttpError(403, FORBIDDEN_MESSAGE);
+      }
       const user = await userService.getUserById(id);
       res.status(200).json(ok(user));
     } catch (err) {
@@ -99,6 +104,16 @@ export const userController = {
   update: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseId(req.params.id);
+      if (!req.auth || !canManageUser(req.auth, id)) {
+        throw new HttpError(403, FORBIDDEN_MESSAGE);
+      }
+      // A non-super actor may only update their own account, and must not be
+      // able to escalate privileges or reactivate/deactivate via a self-update.
+      // Pin role/status to the persisted values regardless of what the body sends.
+      if (req.auth.role !== "super") {
+        const current = await userService.getUserById(id);
+        req.body = { ...req.body, role: current.role, status: current.status };
+      }
       const user = await userService.updateUser(id, req.body);
       res.status(200).json(ok(user));
     } catch (err) {
@@ -109,6 +124,9 @@ export const userController = {
   remove: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseId(req.params.id);
+      if (!req.auth || !canManageUser(req.auth, id)) {
+        throw new HttpError(403, FORBIDDEN_MESSAGE);
+      }
       await userService.deleteUser(id);
       res.status(200).json(ok({ id, deleted: true }));
     } catch (err) {

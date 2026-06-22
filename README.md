@@ -226,6 +226,55 @@ If you get this, the server is working.
 
 The API base URL is `http://localhost:3000/api`. All product endpoints live under `/products`, all category endpoints under `/categories`, and all tag endpoints under `/tags`.
 
+### Authorization (roles & permissions)
+
+Some endpoints are **public** (anyone can call them) and some are **protected** (you must send a valid login token, and your account must have the right **role**).
+
+**The three roles**
+
+| Role     | Who they are                          | What they can do                                                |
+| -------- | ------------------------------------- | --------------------------------------------------------------- |
+| `super`  | Site owner / top admin                | **Everything.** Bypasses every permission check.                |
+| `admin`  | Staff managing the catalog & orders   | Manage all content; manage all orders **except deleting** them. |
+| `client` | A normal customer                     | Browse the storefront; manage only **their own** account/orders. |
+
+A caller with **no token is treated as a `client`/guest** — so the public storefront works without anyone logging in.
+
+**Sending your token.** Log in via `POST /api/auth/login`, take the `accessToken` from the response, and send it on every protected request as a header:
+
+```
+Authorization: Bearer <accessToken>
+```
+
+**What happens when you're not allowed**
+
+| Situation                                              | Status | Response body                                                                       |
+| ------------------------------------------------------ | ------ | ----------------------------------------------------------------------------------- |
+| No token (or an expired/invalid one) on a protected endpoint | `401`  | `{ "success": 0, "status": 401, "error": "Authentication required." }`              |
+| Logged in, but your role/ownership isn't enough        | `403`  | `{ "success": 0, "status": 403, "error": "You do not have permission to perform this action." }` |
+
+**Who can do what**
+
+| Action                                                           | super | admin | client / guest      |
+| ---------------------------------------------------------------- | :---: | :---: | ------------------- |
+| Read products, categories, tags, slides, prices                  |  ✅   |  ✅   | ✅                  |
+| Validate cart (`POST /api/cart/validate`)                        |  ✅   |  ✅   | ✅                  |
+| Upload a `quotes` image                                          |  ✅   |  ✅   | ✅                  |
+| Create / update / delete products, categories, tags, slides, prices |  ✅   |  ✅   | ❌                  |
+| Upload product/category/slide images, delete images              |  ✅   |  ✅   | ❌                  |
+| List users / read **any** user                                   |  ✅   |  ✅   | ❌                  |
+| Read / update / delete **own** account                           |  ✅   |  ✅   | ✅ (own only)       |
+| Create a user, update/delete **any other** user                  |  ✅   |  ❌   | ❌                  |
+| List / read orders                                               |  ✅   |  ✅   | ✅ (own orders only) |
+| Create / update orders                                           |  ✅   |  ✅   | ❌                  |
+| Delete an order                                                  |  ✅   |  ❌   | ❌                  |
+
+**Ownership rules.** "Own only" means the API compares the `id` inside your token to the resource — never an `id` from the request body. A client can `GET/PUT/DELETE /api/users/{theirOwnId}` but gets `403` for anyone else's id; `GET /api/orders` returns only their own orders. When a non-super user updates their own account, any `role` or `status` they put in the body is **ignored** (you can't promote yourself).
+
+**Registration is always a client.** `POST /api/auth/register` ignores any `role` in the body and always creates a `client`. Elevated accounts (`admin`/`super`) can only be created by a `super` via `POST /api/users`.
+
+> **Bootstrapping the first super:** because creating users is super-only, there's a chicken-and-egg problem on a fresh database. Register a normal user, then open Prisma Studio (`npm run prisma:studio`) and set that user's `role` to `super` (and `isVerified` to `true`) by hand. After that, the super can create everyone else through the API.
+
 **Auth**
 
 JWT-based authentication. Register a user, verify the account, then log in to receive an `accessToken` (30 min) + `refreshToken` (30 days). Send the access token as `Authorization: Bearer <token>` on protected endpoints.
@@ -245,7 +294,7 @@ Notes:
 - Refresh tokens are stored as a SHA-256 hash on the user row (`refreshTokenHash`). Issuing a new pair rotates the previous one, so an old refresh token is immediately useless.
 - The access token is **stateless**: logging out clears the refresh token but does not invalidate the access token, which keeps working until it expires (max 30 min). Discard the access token client-side on logout.
 - Email sending is **not implemented yet**. The verification token is returned directly in the register response so the frontend can complete the flow manually. Once email delivery is wired up, the token will be sent over email and removed from the register response.
-- Protect future endpoints by adding the `jwtAuthGuard` middleware from [src/middlewares/authGuard.ts](src/middlewares/authGuard.ts). Use `requireRole("admin")` to gate routes by role.
+- Protect future endpoints with the helpers in [src/middlewares/authGuard.ts](src/middlewares/authGuard.ts): `authorize("super", "admin")` (token **and** role check, reads like `@Roles(...)`) for role-gated routes, or `jwtAuthGuard` alone when the controller does its own ownership check. Ownership predicates (`canViewUser`, `canManageUser`, `canAccessOrder`) live in [src/utils/authorization.ts](src/utils/authorization.ts). See [Authorization (roles & permissions)](#authorization-roles--permissions) for the full matrix.
 
 **Products**
 
@@ -259,6 +308,8 @@ Notes:
 | PUT    | `/products/:id`                   | [Product](#product-fields) | Replace a product                                               |
 | DELETE | `/products/:id`                   | —                          | Delete a product                                                |
 
+> **Access:** all `GET`s are public. Every `POST`/`PUT`/`DELETE` here — including the variant, color-option, product-category, and product-tag sub-resources below — requires a `super` or `admin` token. (See [Authorization](#authorization-roles--permissions).)
+
 **Categories**
 
 | Method | Path                | Body (JSON)                  | What it does                |
@@ -269,6 +320,8 @@ Notes:
 | PUT    | `/categories/:id`   | [Category](#category-fields) | Replace a category          |
 | DELETE | `/categories/:id`   | —                            | Delete a category           |
 
+> **Access:** the two `GET`s are public; `POST`/`PUT`/`DELETE` require a `super` or `admin` token.
+
 **Prices (Custom Neon builder)**
 
 A single shared pricing configuration that the Custom Neon builder uses to compute quotes. There is **one** configuration for the whole site (no list, no IDs in the URL). The CMS reads it with GET and overwrites it with PUT.
@@ -277,6 +330,8 @@ A single shared pricing configuration that the Custom Neon builder uses to compu
 | ------ | ---------------- | -------------------------------------- | ------------------------------------------------------------------------- |
 | GET    | `/prices/custom` | —                                      | Get the current Custom Neon pricing config (auto-initialized to all 0 if never set) |
 | PUT    | `/prices/custom` | [CustomPrices](#custom-prices-fields)  | Replace the full Custom Neon pricing config                               |
+
+> **Access:** `GET /prices/custom` is public (the storefront builder reads it); `PUT /prices/custom` requires a `super` or `admin` token.
 
 **Product-Category relations**
 
@@ -325,6 +380,8 @@ A tag is a short label (e.g. "outdoor", "bestseller") that can be attached to an
 | PUT    | `/tags/:id`    | [Tag](#tag-fields) | Replace a tag          |
 | DELETE | `/tags/:id`    | —                  | Delete a tag           |
 
+> **Access:** the two `GET`s are public; `POST`/`PUT`/`DELETE` require a `super` or `admin` token.
+
 `slug` is **globally unique** — two different tags can never share the same slug. Deleting a tag also removes it from every product it was linked to (the products themselves are not affected).
 
 **Product-Tag relations**
@@ -370,6 +427,8 @@ Slides power the homepage carousel. Each slide has a unique `position` that cont
 | PUT    | `/slides/:id`         | [Slide](#slide-fields)           | Update a slide's content/active state |
 | PUT    | `/slides/reorder`     | `{ slideId, newPosition }`       | Move a slide to a new position        |
 
+> **Access:** `GET /slides` and `GET /slides/:id` are public; creating, updating, and reordering slides require a `super` or `admin` token.
+
 `GET /slides?isActive=true` returns only active slides; `isActive=false` returns only inactive ones; omit the param to get all.
 
 The reorder endpoint shifts all affected slides so positions stay sequential and unique. Example:
@@ -389,6 +448,8 @@ Handles file uploads for all parts of the app. Files are saved to disk under `/u
 | ------ | --------------------------- | ------------------------------ | ------------------------- |
 | POST   | `/images/upload/:type`      | `multipart/form-data` (field: `file`) | Upload a file      |
 | DELETE | `/images?imageUrl=...`      | —                              | Delete an uploaded file   |
+
+> **Access:** uploading to the `quotes` type is **public** (so guests can attach images to a custom-quote request during checkout). Uploading `products`/`categories`/`slides` assets and deleting any image require a `super` or `admin` token.
 
 **Valid types:** `products`, `quotes`, `categories`, `slides`
 
@@ -430,6 +491,8 @@ Customer and admin accounts. Unlike products and categories (which are read by `
 | PUT    | `/users/:id`                  | [User](#user-fields) | Replace a user                                 |
 | DELETE | `/users/:id`                  | —                    | Delete a user                                  |
 
+> **Access:** `GET /users/check-email` is public. Listing users (`GET /users`) is `super`/`admin` only. Reading a single user (`GET /users/:id`) is allowed for `super`/`admin` (any user) or the account owner. Creating a user (`POST /users`) is `super` only. Updating/deleting a user (`PUT`/`DELETE /users/:id`) is `super` (any user) or the account owner — an `admin` **cannot** modify another user. When a non-`super` updates their own account, `role` and `status` in the body are ignored. All of these (except `check-email`) require a token.
+
 > **`check-email` is a lightweight existence check.** It returns only `{ email, exists }` — never user data — so guest-checkout and registration flows can ask "is this email taken?" without pulling a full user record. See [Checking if an email exists](#checking-if-an-email-exists).
 
 The list endpoint supports the standard `page` / `perPage` pagination plus four optional filters:
@@ -453,6 +516,8 @@ A purchase made by a user. Each order owns its `items[]` — those items store a
 | PUT    | `/orders/:id`  | [Order](#order-fields) | Replace an order           |
 | DELETE | `/orders/:id`  | —                      | Delete an order            |
 
+> **Access:** every order endpoint requires a token. A `client` may list and read only **their own** orders (`GET /orders` is automatically filtered to them; reading someone else's order returns `403`). `super`/`admin` see all orders. Creating and updating orders is `super`/`admin`; **only `super` may delete** an order.
+
 The list endpoint supports the standard `page` / `perPage` pagination plus two optional filters:
 
 - `search` — matches an exact order ID (when the value is numeric), tracking number, payment ID, or the owning user's full name, email, or phone number (case-insensitive substring).
@@ -469,6 +534,8 @@ A pre-checkout safety check. The frontend keeps the shopper's cart in LocalStora
 | Method | Path             | Body (JSON)                          | What it does                                  |
 | ------ | ---------------- | ------------------------------------ | --------------------------------------------- |
 | POST   | `/cart/validate` | [Cart](#cart-validation-fields)      | Validate the cart and return refreshed totals |
+
+> **Access:** public — checkout must work for guests, so no token is required.
 
 It does **not** touch orders — validating a cart neither reads nor writes any order. Think of it as the step between "Cart" and "Checkout": `Cart → Validate Cart → Checkout → Create Order`. See [Cart validation fields](#cart-validation-fields) for the request/response shape.
 
@@ -748,7 +815,6 @@ type RegisterInput = {
   email: string;          // required — valid format, globally unique
   password: string;       // required — minimum 8 characters
   phoneNumber?: string;   // optional — max 20 characters
-  role?: "admin" | "client" | "super"; // optional — defaults to "client"
 };
 ```
 
@@ -758,7 +824,8 @@ type RegisterInput = {
 | `email`       | string | yes      | Must be valid and globally unique. Stored lowercased.                |
 | `password`    | string | yes      | Minimum 8 characters. Stored as a bcrypt hash; raw password is never persisted. |
 | `phoneNumber` | string | no       | Max 20 characters.                                                   |
-| `role`        | enum   | no       | One of `admin`, `client`, `super`. Defaults to `client`.             |
+
+> **Role is not accepted here.** Public self-registration always creates a `client`; any `role` sent in the body is ignored. To create an `admin` or `super`, a `super` must use `POST /api/users`.
 
 Successful registration returns:
 

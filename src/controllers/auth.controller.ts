@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { authService } from "../services/auth.service";
 import { ok } from "../utils/apiResponse";
 import { HttpError } from "../utils/HttpError";
+import { AUTH_REQUIRED_MESSAGE } from "../middlewares/authGuard";
 
 export const authController = {
   register: async (req: Request, res: Response, next: NextFunction) => {
@@ -33,7 +34,7 @@ export const authController = {
 
   logout: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!req.auth) throw new HttpError(401, "Unauthenticated");
+      if (!req.auth) throw new HttpError(401, AUTH_REQUIRED_MESSAGE);
       await authService.logout(req.auth.sub);
       res.status(200).json(ok({ loggedOut: true }));
     } catch (err) {
@@ -52,7 +53,7 @@ export const authController = {
 
   me: async (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!req.auth) throw new HttpError(401, "Unauthenticated");
+      if (!req.auth) throw new HttpError(401, AUTH_REQUIRED_MESSAGE);
       const user = await authService.getCurrentUser(req.auth.sub);
       res.status(200).json(ok(user));
     } catch (err) {

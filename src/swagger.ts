@@ -32,7 +32,30 @@ export const swaggerSpec = {
       "Every response — success or error — uses the same `ApiNeonResponse` envelope:\n" +
       "- List endpoints return `results[]` + `total` + `page` + `perPage`.\n" +
       "- Single-item endpoints return `data`.\n" +
-      "- Errors return `success: 0` + `error` message.",
+      "- Errors return `success: 0` + `error` message.\n\n" +
+      "## Authentication & Authorization\n\n" +
+      "Protected endpoints expect a JWT access token: `Authorization: Bearer <token>` " +
+      "(obtain it from `POST /api/auth/login`). Callers have one of three roles — " +
+      "`super`, `admin`, `client` — and **unauthenticated callers are treated as `client`/guest**.\n\n" +
+      "Failures use the standard envelope:\n" +
+      '- **401 Unauthorized** — token missing/invalid: `{ "success": 0, "status": 401, "error": "Authentication required." }`\n' +
+      '- **403 Forbidden** — authenticated but not allowed: `{ "success": 0, "status": 403, "error": "You do not have permission to perform this action." }`\n\n' +
+      "### Permission matrix\n\n" +
+      "| Action | super | admin | client / guest |\n" +
+      "| --- | --- | --- | --- |\n" +
+      "| Read products / categories / tags / slides / prices | ✅ | ✅ | ✅ |\n" +
+      "| Validate cart (`POST /api/cart/validate`) | ✅ | ✅ | ✅ |\n" +
+      "| Upload `quotes` image | ✅ | ✅ | ✅ |\n" +
+      "| CRUD products / categories / tags / slides / prices | ✅ | ✅ | ❌ |\n" +
+      "| Upload products/categories/slides images, delete images | ✅ | ✅ | ❌ |\n" +
+      "| Read any user / list users | ✅ | ✅ | ❌ |\n" +
+      "| Read / update / delete **own** user | ✅ | ✅ | ✅ |\n" +
+      "| Create user, update/delete **any** user | ✅ | ❌ | ❌ |\n" +
+      "| List / read **own** orders | ✅ | ✅ | ✅ (own only) |\n" +
+      "| Create / update orders | ✅ | ✅ | ❌ |\n" +
+      "| Delete orders | ✅ | ❌ | ❌ |\n\n" +
+      "Notes: super bypasses all checks. Ownership uses the token's user id, never an id from the body. " +
+      "Public self-registration always creates a `client`; a client updating its own account cannot change its `role`/`status`.",
   },
   servers: [{ url: "http://localhost:3000", description: "Local dev server" }],
   tags: [
@@ -69,17 +92,27 @@ export const swaggerSpec = {
     {
       name: "Images",
       description:
-        "File upload and deletion. Uploaded files are served as static assets under /uploads/.",
+        "File upload and deletion. Uploaded files are served as static assets under /uploads/. " +
+        "Uploading to the `quotes` type is public (custom-quote / checkout flow); uploading " +
+        "`products`/`categories`/`slides` assets and deleting images require super/admin.",
     },
     {
       name: "Users",
       description:
-        "Customer and admin accounts. Read and write by numeric ID. Email is unique.",
+        "Customer and admin accounts. Read and write by numeric ID. Email is unique.\n\n" +
+        "Authorization: listing users and creating users are restricted — list is super/admin, " +
+        "create is super-only. Reading a single user is allowed for super/admin (any user) or the " +
+        "account owner. Updating/deleting a user is super (any user) or the account owner only " +
+        "(an admin cannot modify another user). Requires `Authorization: Bearer <token>`; " +
+        "`GET /api/users/check-email` is public.",
     },
     {
       name: "Orders",
       description:
-        "Customer orders. Each order owns its `items[]` and stores a snapshot of product data (name, slug, image, price) at purchase time so historical records survive product changes.",
+        "Customer orders. Each order owns its `items[]` and stores a snapshot of product data (name, slug, image, price) at purchase time so historical records survive product changes.\n\n" +
+        "Authorization: all order endpoints require authentication. A client may list and read only " +
+        "their **own** orders; super/admin see all. Creating and updating orders is super/admin; " +
+        "only super may delete an order.",
     },
     {
       name: "Cart",
@@ -1328,9 +1361,12 @@ export const swaggerSpec = {
         type: "object",
         required: ["fullName", "email", "password"],
         description:
-          "Fields accepted by POST /api/auth/register. The user is created with `isVerified=false` and `status=1` (ACTIVE). " +
+          "Fields accepted by POST /api/auth/register. Public self-registration always creates a " +
+          "`client` account — any `role` sent in the body is ignored. The user is created with " +
+          "`isVerified=false` and `status=1` (ACTIVE). " +
           "A `verificationToken` is returned in the response — submit it to POST /api/auth/verify-account to verify the email. " +
-          "Email sending is not implemented yet; the token is returned directly for now.",
+          "Email sending is not implemented yet; the token is returned directly for now. " +
+          "Elevated accounts (admin/super) can only be created by a super via POST /api/users.",
         properties: {
           fullName: { type: "string", example: "Juan Pérez" },
           email: { type: "string", format: "email", example: "juan@example.com" },
@@ -1346,13 +1382,6 @@ export const swaggerSpec = {
             nullable: true,
             maxLength: 20,
             example: "+52 55 1234 5678",
-          },
-          role: {
-            type: "string",
-            enum: ["admin", "client", "super"],
-            default: "client",
-            example: "client",
-            description: "Optional. Defaults to `client` when omitted.",
           },
         },
       },

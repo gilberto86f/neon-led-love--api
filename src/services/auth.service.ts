@@ -4,7 +4,7 @@ import jwt, { SignOptions } from "jsonwebtoken";
 import { prisma } from "../prisma/client";
 import { HttpError } from "../utils/HttpError";
 import { authConfig } from "../utils/authConfig";
-import { USER_ROLES, UserRole } from "./user.service";
+import { UserRole } from "./user.service";
 
 export type SafeUser = {
   id: number;
@@ -86,7 +86,6 @@ export const authService = {
     email?: unknown;
     password?: unknown;
     phoneNumber?: unknown;
-    role?: unknown;
   }) => {
     requireString(input, "fullName");
     requireString(input, "email");
@@ -105,13 +104,10 @@ export const authService = {
       );
     }
 
-    let role: UserRole = "client";
-    if (input.role !== undefined && input.role !== null && input.role !== "") {
-      if (typeof input.role !== "string" || !USER_ROLES.includes(input.role as UserRole)) {
-        throw new HttpError(400, `Field "role" must be one of: ${USER_ROLES.join(", ")}`);
-      }
-      role = input.role as UserRole;
-    }
+    // Public self-registration always creates a client account. Elevated roles
+    // (admin/super) can only be assigned by a super via POST /users — never
+    // through a role supplied in the registration body.
+    const role: UserRole = "client";
 
     let phoneNumber: string | null = null;
     if (input.phoneNumber !== undefined && input.phoneNumber !== null && input.phoneNumber !== "") {

@@ -243,14 +243,17 @@ export const orderService = {
     perPage,
     search,
     status,
+    userId,
   }: {
     page: number;
     perPage: number;
     search?: string;
     status?: OrderStatus;
+    userId?: number;
   }) => {
     const skip = (page - 1) * perPage;
     const where: Prisma.OrderWhereInput = {};
+    if (userId !== undefined) where.userId = userId;
     if (status !== undefined) where.status = status;
     if (search) {
       const idMatch = /^\d+$/.test(search) ? Number(search) : null;
