@@ -1374,8 +1374,12 @@ export const swaggerSpec = {
             type: "string",
             format: "password",
             minLength: 8,
-            example: "supersecret",
-            description: "Minimum 8 characters. Stored as a bcrypt hash.",
+            maxLength: 72,
+            example: "Supersecret1!",
+            description:
+              "8–72 characters and must contain at least one lowercase letter, one uppercase " +
+              "letter, one digit, and one special character (anything that is not a letter or " +
+              "digit). Stored as a bcrypt hash.",
           },
           phoneNumber: {
             type: "string",
@@ -1491,9 +1495,12 @@ export const swaggerSpec = {
             type: "string",
             format: "password",
             minLength: 8,
+            maxLength: 72,
             example: "NewPassword123!",
             description:
-              "The replacement password. Minimum 8 characters and must be different from the current password.",
+              "The replacement password. Must satisfy the same strength rules as registration " +
+              "(8–72 characters with at least one lowercase letter, one uppercase letter, one " +
+              "digit, and one special character) and must be different from the current password.",
           },
         },
       },

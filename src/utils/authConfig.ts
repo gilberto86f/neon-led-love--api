@@ -6,6 +6,10 @@ export const authConfig = {
   refreshTokenTtlDays: Number(process.env.JWT_REFRESH_TTL_DAYS || 30),
   bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS || 10),
   passwordMinLength: 8,
+  // bcrypt silently truncates input past 72 bytes, so anything longer is both
+  // pointless and a footgun (the ignored tail gives a false sense of strength).
+  // Cap at 72 to keep the whole password meaningful.
+  passwordMaxLength: 72,
 };
 
 if (process.env.NODE_ENV === "production") {

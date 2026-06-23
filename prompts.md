@@ -1,234 +1,56 @@
 👨‍💻
 
-# Add Change Password Endpoint
+# Add Password validations
 
-Create a new endpoint that allows authenticated users to change their password.
+A password should follow the next rules:
 
-Goal:
+- Minimum length of 8
+- Maximum length (add an appropiate maximum validation, I am not sure on what the standard is)
+  At least one of the following:
+  - lowercase letter (`a-z`) — otherwise `passwordLowercase`
+  - uppercase letter (`A-Z`) — otherwise `passwordUppercase`
+  - digit (`0-9`) — otherwise `passwordDigit`
+  - special character (anything that is not a letter or digit) — otherwise `passwordSpecial`
 
-Allow users to securely update their own password without requiring administrative intervention.
+The front-end is using this function, maybe it could help:
 
----
+```TYPESCRIPT
+export function passwordStrengthValidator(): ValidatorFn {
+  return (control: AbstractControl): ValidationErrors | null => {
+    const value = control.value;
+    if (!value) return null;
 
-## Endpoint
+    const errors: ValidationErrors = {};
+    if (!/[a-z]/.test(value)) errors['passwordLowercase'] = true;
+    if (!/[A-Z]/.test(value)) errors['passwordUppercase'] = true;
+    if (!/\d/.test(value)) errors['passwordDigit'] = true;
+    if (!/[^a-zA-Z\d]/.test(value)) errors['passwordSpecial'] = true;
 
-```http
-PUT /api/auth/change-password
-```
-
-Authentication required:
-
-```
-Bearer Token
-```
-
----
-
-## Authorization
-
-A user may only change their own password.
-
-The target user must always be determined from:
-
-```TypeScript
-request.user.id
-```
-
-obtained from the authenticated JWT.
-
-Do not allow:
-
-```TypeScript
-userId
-```
-
-to be passed in the request body, query params, or route params.
-
----
-
-## Request Body
-
-```JSON
-{
-  "currentPassword": "OldPassword123!",
-  "newPassword": "NewPassword123!"
+    return Object.keys(errors).length ? errors : null;
+  };
 }
 ```
-
----
-
-## Validation
-
-### Current Password
-
-Requirements:
-
-- required
-- must match the user's current password
-
-If invalid:
-
-```JSON
-{
-  "success": 0,
-  "status": 400,
-  "message": "Current password is incorrect."
-}
-```
-
----
-
-### New Password
-
-Apply the exact same validation rules already used during registration.
-
-Reuse the existing validation logic instead of duplicating it.
-
-Examples:
-
-- minimum length
-- maximum length
-- uppercase requirements
-- lowercase requirements
-- numbers
-- special characters
-
-(or whatever rules currently exist in Register)
-
----
-
-### Prevent Reusing Current Password
-
-If:
-
-```TypeScript
-currentPassword === newPassword
-```
-
-return:
-
-```JSON
-{
-  "success": 0,
-  "status": 400,
-  "message": "The new password must be different from the current password."
-}
-```
-
----
-
-## Successful Response
-
-```JSON
-{
-  "success": 1,
-  "status": 200,
-  "message": "Password updated successfully."
-}
-```
-
----
-
-## Refresh Token Security
-
-After a successful password change:
-
-Invalidate all existing refresh tokens for the user.
-
-This forces old sessions to become unusable.
-
-Suggested approach:
-
-```TypeScript
-user.refreshTokenHash = null;
-```
-
-or the equivalent mechanism already used by Auth.
-
----
-
-## Login Behavior After Password Change
-
-The user should be required to authenticate again.
-
-Recommended flow:
-
-```
-Change Password
-↓
-Password Updated
-↓
-Invalidate Refresh Tokens
-↓
-Logout Current Session
-↓
-User Logs In Again
-```
-
-This is the safest approach.
-
----
-
-## Error Responses
-
-### Not Authenticated
-
-```JSON
-{
-  "success": 0,
-  "status": 401,
-  "message": "Authentication required."
-}
-```
-
----
-
-### Incorrect Current Password
-
-```JSON
-{
-  "success": 0,
-  "status": 400,
-  "message": "Current password is incorrect."
-}
-```
-
----
-
-### Invalid New Password
-
-Use the same validation messages already returned by Register.
-
----
 
 🤖
 
 # Summary
 
-Added PUT /api/auth/change-password — an authenticated user can change their own password. The endpoint follows the project's strict route → controller → service → Prisma layering.
+Expanded the shared validatePassword helper in auth.service.ts — the single source of truth that both register and changePassword already call — so the new rules apply to registration and change-password automatically.
 
-## Code changes:
+Rules enforced (mirroring the frontend's passwordStrengthValidator, same regexes):
 
-- auth.service.ts — Extracted the registration password rule into a shared validatePassword helper (so register and change-password can't drift), refactored register to use it, and added a changePassword(userId, input) method that:
-  - takes the user id from the verified JWT (never the body/params),
-  - requires currentPassword/newPassword,
-  - verifies the current password (400 "Current password is incorrect."),
-  - validates the new password with the same rules as registration,
-  - rejects a new password equal to the current one (400 "The new password must be different from the current password."),
-  - hashes the new password and clears refreshTokenHash + refreshTokenExpiresAt to invalidate all sessions.
-- auth.controller.ts — changePassword controller, guards on req.auth, passes req.auth.sub (the JWT's user id), returns ok({ message: "Password updated successfully." }).
-- auth.routes.ts — router.put("/change-password", jwtAuthGuard, ...).
+- min 8 / max 72 characters
+- at least one lowercase [a-z], one uppercase [A-Z], one digit \d, and one special char [^a-zA-Z\d]
 
-## Docs (required by CLAUDE.md, same change):
+## Changes:
 
-swagger.ts — ChangePasswordInput / ChangePasswordResponse schemas and the /api/auth/change-password path.
-README.md — table row, a note explaining the session-invalidation behavior, and a "change-password fields" section.
+- authConfig.ts — added passwordMaxLength: 72.
+- auth.service.ts — validatePassword now checks length bounds + the four character classes.
+- swagger.ts — updated RegisterInput and ChangePasswordInput password fields (added maxLength: 72, full rule descriptions, and fixed the RegisterInput example — "supersecret" would no longer have passed; now "Supersecret1!").
+- README.md — added a reusable Password strength rules table; register and change-password now link to it.
 
-## Two deliberate deviations from the prompt's JSON, to honor the CLAUDE.md envelope rule (which OVERRIDES — "never hand-roll the envelope"):
+## Three decisions worth flagging:
 
-- The success body is { success: 1, status: 200, data: { message: "Password updated successfully." } } — the message lives under data, matching how /auth/logout returns { data: { loggedOut: true } }. The ApiNeonResponse type has no top-level message field.
-- Error messages land in the error field (via the existing errorHandler → fail()), not message, but the exact strings from the prompt are preserved. The README documents this so the frontend reads error.
-
-Authentication "required" / "incorrect password" copy reuses the existing AUTH_REQUIRED_MESSAGE ("Authentication required.") from the auth guard, so the 401 matches the rest of the API. npx tsc --noEmit passes.
-
-Note: registration currently enforces only a minimum length of 8 — there are no uppercase/lowercase/number/special-character rules in this codebase, so "the same rules as register" means the min-length check. If you want the stronger rules the prompt lists as examples, I can add them to validatePassword and both flows will pick them up automatically.
+1. Max length = 72. You asked what the standard is — bcryptjs silently truncates input past 72 bytes, so anything longer is ignored and gives a false sense of strength. Capping at 72 makes the whole password meaningful. (Commented in authConfig.ts.)
+2. Fail-fast, not aggregated. The frontend validator collects all broken rules at once; the backend follows this repo's existing validator style and throws the first broken rule as a 400. So a password missing both a digit and an uppercase letter returns one message at a time. The frontend already does the rich per-field validation, so the backend acts as the safety net — but if you'd prefer it to return all violations in one response, I can switch it to aggregate.
+3. Error format. The codes you listed (passwordLowercase, etc.) are produced by the frontend validator itself. The backend returns human-readable strings in the standard error field (e.g. Field "password" must contain at least one uppercase letter), consistent with every other endpoint's envelope rather than echoing those codes. Let me know if you actually want the machine codes surfaced in the API response and I'll adjust the shape.

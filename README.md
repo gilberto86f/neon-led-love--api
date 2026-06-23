@@ -815,7 +815,7 @@ Tags are independent of products. The same tag can be linked to many products, a
 type RegisterInput = {
   fullName: string;       // required
   email: string;          // required — valid format, globally unique
-  password: string;       // required — minimum 8 characters
+  password: string;       // required — see strength rules below
   phoneNumber?: string;   // optional — max 20 characters
 };
 ```
@@ -824,7 +824,7 @@ type RegisterInput = {
 | ------------- | ------ | -------- | -------------------------------------------------------------------- |
 | `fullName`    | string | yes      | Trimmed before saving.                                               |
 | `email`       | string | yes      | Must be valid and globally unique. Stored lowercased.                |
-| `password`    | string | yes      | Minimum 8 characters. Stored as a bcrypt hash; raw password is never persisted. |
+| `password`    | string | yes      | Must pass the [password strength rules](#password-strength-rules). Stored as a bcrypt hash; raw password is never persisted. |
 | `phoneNumber` | string | no       | Max 20 characters.                                                   |
 
 > **Role is not accepted here.** Public self-registration always creates a `client`; any `role` sent in the body is ignored. To create an `admin` or `super`, a `super` must use `POST /api/users`.
@@ -843,6 +843,21 @@ Successful registration returns:
 ```
 
 Send the `verificationToken` to `POST /api/auth/verify-account` to mark the account as verified. Until then, login responds with `403`.
+
+### Password strength rules
+
+Every password the API accepts (`POST /auth/register` and `PUT /auth/change-password`) must satisfy **all** of:
+
+| Rule              | Requirement                                                            | Error message if broken                                       |
+| ----------------- | --------------------------------------------------------------------- | ------------------------------------------------------------ |
+| Minimum length    | At least 8 characters                                                 | `Field "password" must be at least 8 characters`             |
+| Maximum length    | At most 72 characters (bcrypt ignores anything past 72 bytes)         | `Field "password" must be at most 72 characters`             |
+| Lowercase letter  | At least one `a-z`                                                     | `Field "password" must contain at least one lowercase letter` |
+| Uppercase letter  | At least one `A-Z`                                                     | `Field "password" must contain at least one uppercase letter` |
+| Digit             | At least one `0-9`                                                     | `Field "password" must contain at least one digit`           |
+| Special character | At least one character that is not a letter or digit (e.g. `!@#$ `)   | `Field "password" must contain at least one special character` |
+
+These match the frontend's `passwordStrengthValidator`, so a password the form accepts will also pass here. The API checks the rules in the order above and returns the **first** one that fails as a `400` (`{ "success": 0, "status": 400, "error": "..." }`).
 
 ### Auth login fields
 
@@ -876,7 +891,7 @@ The frontend stores both tokens (typically: access token in memory, refresh toke
 // PUT /api/auth/change-password  (Authorization: Bearer <accessToken>)
 type ChangePasswordInput = {
   currentPassword: string; // required — must match the user's current password
-  newPassword: string;     // required — same rules as register (min 8 chars), must differ from current
+  newPassword: string;     // required — same strength rules as register, must differ from current
 };
 ```
 
@@ -894,7 +909,7 @@ Error cases (all return the standard `{ "success": 0, "status", "error" }` envel
 
 - `400` `"Current password is incorrect."` — `currentPassword` does not match.
 - `400` `"The new password must be different from the current password."` — `newPassword` equals `currentPassword`.
-- `400` `Field "password" must be at least 8 characters` — `newPassword` fails the registration strength rules.
+- `400` `Field "password" must ...` — `newPassword` fails one of the [password strength rules](#password-strength-rules).
 - `401` `"Authentication required."` — missing or invalid access token.
 
 After a successful change, all of the user's refresh tokens are invalidated, so the user must log in again to get a new token pair.

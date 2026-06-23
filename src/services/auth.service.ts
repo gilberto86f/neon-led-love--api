@@ -50,13 +50,33 @@ const requireString = (input: any, field: string) => {
 };
 
 // Single source of truth for password strength rules. Used by both registration
-// and change-password so the two flows can never drift apart.
+// and change-password so the two flows can never drift apart. The character-class
+// checks mirror the frontend's `passwordStrengthValidator` so client- and
+// server-side rejections line up. Fails fast on the first broken rule.
 const validatePassword = (password: string) => {
   if (password.length < authConfig.passwordMinLength) {
     throw new HttpError(
       400,
       `Field "password" must be at least ${authConfig.passwordMinLength} characters`,
     );
+  }
+  if (password.length > authConfig.passwordMaxLength) {
+    throw new HttpError(
+      400,
+      `Field "password" must be at most ${authConfig.passwordMaxLength} characters`,
+    );
+  }
+  if (!/[a-z]/.test(password)) {
+    throw new HttpError(400, `Field "password" must contain at least one lowercase letter`);
+  }
+  if (!/[A-Z]/.test(password)) {
+    throw new HttpError(400, `Field "password" must contain at least one uppercase letter`);
+  }
+  if (!/\d/.test(password)) {
+    throw new HttpError(400, `Field "password" must contain at least one digit`);
+  }
+  if (!/[^a-zA-Z\d]/.test(password)) {
+    throw new HttpError(400, `Field "password" must contain at least one special character`);
   }
 };
 
