@@ -60,4 +60,14 @@ export const authController = {
       next(err);
     }
   },
+
+  changePassword: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.auth) throw new HttpError(401, AUTH_REQUIRED_MESSAGE);
+      await authService.changePassword(req.auth.sub, req.body);
+      res.status(200).json(ok({ message: "Password updated successfully." }));
+    } catch (err) {
+      next(err);
+    }
+  },
 };

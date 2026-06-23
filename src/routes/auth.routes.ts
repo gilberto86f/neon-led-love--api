@@ -10,5 +10,6 @@ router.post("/refresh", authController.refresh);
 router.post("/verify-account", authController.verifyAccount);
 router.post("/logout", jwtAuthGuard, authController.logout);
 router.get("/me", jwtAuthGuard, authController.me);
+router.put("/change-password", jwtAuthGuard, authController.changePassword);
 
 export default router;

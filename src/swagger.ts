@@ -1472,6 +1472,47 @@ export const swaggerSpec = {
           },
         },
       },
+      ChangePasswordInput: {
+        type: "object",
+        required: ["currentPassword", "newPassword"],
+        description:
+          "Fields accepted by PUT /api/auth/change-password. The target user is always the " +
+          "authenticated caller (taken from the access token) — a user id can never be supplied. " +
+          "`newPassword` must satisfy the same strength rules as registration and must differ from " +
+          "`currentPassword`.",
+        properties: {
+          currentPassword: {
+            type: "string",
+            format: "password",
+            example: "OldPassword123!",
+            description: "The user's existing password. Must match the stored hash.",
+          },
+          newPassword: {
+            type: "string",
+            format: "password",
+            minLength: 8,
+            example: "NewPassword123!",
+            description:
+              "The replacement password. Minimum 8 characters and must be different from the current password.",
+          },
+        },
+      },
+      ChangePasswordResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: {
+            type: "object",
+            properties: {
+              message: {
+                type: "string",
+                example: "Password updated successfully.",
+              },
+            },
+          },
+        },
+      },
       ImageUploadResponse: {
         type: "object",
         properties: {
@@ -3136,6 +3177,45 @@ export const swaggerSpec = {
               },
             },
           },
+          401: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    "/api/auth/change-password": {
+      put: {
+        tags: ["Auth"],
+        summary: "Change the authenticated user's password",
+        description:
+          "Updates the password of the user identified by the access token. The user can only ever " +
+          "change their own password — no user id is accepted in the body, query, or path.\n\n" +
+          "`currentPassword` must match the stored password (otherwise `400` " +
+          "*\"Current password is incorrect.\"*). `newPassword` is validated with the same rules as " +
+          "registration and must differ from the current password (otherwise `400` " +
+          "*\"The new password must be different from the current password.\"*).\n\n" +
+          "On success every refresh token for the user is invalidated (`refreshTokenHash` and " +
+          "`refreshTokenExpiresAt` are cleared), so all existing sessions must log in again. The " +
+          "current access token keeps working until it expires (max 30 min) — the frontend should " +
+          "log the user out and prompt a fresh login.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/ChangePasswordInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Password updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ChangePasswordResponse" },
+              },
+            },
+          },
+          400: errorResponse,
           401: errorResponse,
           404: errorResponse,
         },

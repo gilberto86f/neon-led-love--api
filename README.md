@@ -287,12 +287,14 @@ JWT-based authentication. Register a user, verify the account, then log in to re
 | POST   | `/auth/refresh`       | `{ "refreshToken": "..." }`          | no        | Returns a fresh access + refresh token pair (rotated).    |
 | POST   | `/auth/logout`        | —                                    | yes       | Invalidates the stored refresh token for the user.        |
 | GET    | `/auth/me`            | —                                    | yes       | Returns the user matching the access token.               |
+| PUT    | `/auth/change-password` | [Change password](#auth-change-password-fields) | yes | Change your own password. Invalidates all refresh tokens. |
 
 Notes:
 
 - Login is rejected with `403` for accounts where `status=0` (INACTIVE) or `isVerified=false`.
 - Refresh tokens are stored as a SHA-256 hash on the user row (`refreshTokenHash`). Issuing a new pair rotates the previous one, so an old refresh token is immediately useless.
 - The access token is **stateless**: logging out clears the refresh token but does not invalidate the access token, which keeps working until it expires (max 30 min). Discard the access token client-side on logout.
+- `PUT /auth/change-password` lets a logged-in user change **their own** password — the user is taken from the access token, so no user id is sent in the request. After a successful change, every refresh token for that user is invalidated (all other sessions are logged out). The current access token still works until it expires, so the frontend should log the user out and have them sign in again.
 - Email sending is **not implemented yet**. The verification token is returned directly in the register response so the frontend can complete the flow manually. Once email delivery is wired up, the token will be sent over email and removed from the register response.
 - Protect future endpoints with the helpers in [src/middlewares/authGuard.ts](src/middlewares/authGuard.ts): `authorize("super", "admin")` (token **and** role check, reads like `@Roles(...)`) for role-gated routes, or `jwtAuthGuard` alone when the controller does its own ownership check. Ownership predicates (`canViewUser`, `canManageUser`, `canAccessOrder`) live in [src/utils/authorization.ts](src/utils/authorization.ts). See [Authorization (roles & permissions)](#authorization-roles--permissions) for the full matrix.
 
@@ -867,6 +869,35 @@ Successful response shape:
 ```
 
 The frontend stores both tokens (typically: access token in memory, refresh token in `httpOnly` cookie or secure storage), attaches the access token as `Authorization: Bearer <accessToken>` to API calls, and uses the refresh token to obtain new pairs.
+
+### Auth change-password fields
+
+```ts
+// PUT /api/auth/change-password  (Authorization: Bearer <accessToken>)
+type ChangePasswordInput = {
+  currentPassword: string; // required — must match the user's current password
+  newPassword: string;     // required — same rules as register (min 8 chars), must differ from current
+};
+```
+
+The user is always taken from the access token, so you never send a user id. Successful response:
+
+```json
+{
+  "success": 1,
+  "status": 200,
+  "data": { "message": "Password updated successfully." }
+}
+```
+
+Error cases (all return the standard `{ "success": 0, "status", "error" }` envelope):
+
+- `400` `"Current password is incorrect."` — `currentPassword` does not match.
+- `400` `"The new password must be different from the current password."` — `newPassword` equals `currentPassword`.
+- `400` `Field "password" must be at least 8 characters` — `newPassword` fails the registration strength rules.
+- `401` `"Authentication required."` — missing or invalid access token.
+
+After a successful change, all of the user's refresh tokens are invalidated, so the user must log in again to get a new token pair.
 
 ### User fields
 

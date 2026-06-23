@@ -49,6 +49,17 @@ const requireString = (input: any, field: string) => {
   }
 };
 
+// Single source of truth for password strength rules. Used by both registration
+// and change-password so the two flows can never drift apart.
+const validatePassword = (password: string) => {
+  if (password.length < authConfig.passwordMinLength) {
+    throw new HttpError(
+      400,
+      `Field "password" must be at least ${authConfig.passwordMinLength} characters`,
+    );
+  }
+};
+
 const signAccessToken = (user: { id: number; email: string; role: string }) =>
   jwt.sign(
     { sub: user.id, email: user.email, role: user.role } satisfies AccessTokenPayload,
@@ -97,12 +108,7 @@ export const authService = {
     }
 
     const password = String(input.password);
-    if (password.length < authConfig.passwordMinLength) {
-      throw new HttpError(
-        400,
-        `Field "password" must be at least ${authConfig.passwordMinLength} characters`,
-      );
-    }
+    validatePassword(password);
 
     // Public self-registration always creates a client account. Elevated roles
     // (admin/super) can only be assigned by a super via POST /users — never
@@ -232,6 +238,53 @@ export const authService = {
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new HttpError(404, "User not found");
     return toSafeUser(user);
+  },
+
+  // The target user is always the authenticated caller (userId comes from the
+  // verified JWT, never from the request body/params) so a user can only ever
+  // change their own password.
+  changePassword: async (
+    userId: number,
+    input: { currentPassword?: unknown; newPassword?: unknown },
+  ) => {
+    requireString(input, "currentPassword");
+    requireString(input, "newPassword");
+
+    const currentPassword = String(input.currentPassword);
+    const newPassword = String(input.newPassword);
+
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user || !user.passwordHash) {
+      throw new HttpError(404, "User not found");
+    }
+
+    const matches = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!matches) {
+      throw new HttpError(400, "Current password is incorrect.");
+    }
+
+    // Hold the new password to the same strength rules as registration.
+    validatePassword(newPassword);
+
+    if (currentPassword === newPassword) {
+      throw new HttpError(
+        400,
+        "The new password must be different from the current password.",
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, authConfig.bcryptSaltRounds);
+
+    // Persist the new hash and invalidate every existing refresh token, forcing
+    // all other sessions to log in again.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        refreshTokenHash: null,
+        refreshTokenExpiresAt: null,
+      },
+    });
   },
 
   verifyAccessToken: (token: string): AccessTokenPayload => {
