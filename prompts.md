@@ -1,56 +1,50 @@
 👨‍💻
 
-# Add Password validations
+# Improve `validate` request response
 
-A password should follow the next rules:
+- Improve `validate` request response, specially messages:
+- Right now `messages` is just an array of strings like this:
 
-- Minimum length of 8
-- Maximum length (add an appropiate maximum validation, I am not sure on what the standard is)
-  At least one of the following:
-  - lowercase letter (`a-z`) — otherwise `passwordLowercase`
-  - uppercase letter (`A-Z`) — otherwise `passwordUppercase`
-  - digit (`0-9`) — otherwise `passwordDigit`
-  - special character (anything that is not a letter or digit) — otherwise `passwordSpecial`
-
-The front-end is using this function, maybe it could help:
-
-```TYPESCRIPT
-export function passwordStrengthValidator(): ValidatorFn {
-  return (control: AbstractControl): ValidationErrors | null => {
-    const value = control.value;
-    if (!value) return null;
-
-    const errors: ValidationErrors = {};
-    if (!/[a-z]/.test(value)) errors['passwordLowercase'] = true;
-    if (!/[A-Z]/.test(value)) errors['passwordUppercase'] = true;
-    if (!/\d/.test(value)) errors['passwordDigit'] = true;
-    if (!/[^a-zA-Z\d]/.test(value)) errors['passwordSpecial'] = true;
-
-    return Object.keys(errors).length ? errors : null;
-  };
-}
 ```
+    "messages": [
+      "The price of product \"Bulbasaur\" has changed.",
+      "The product \"Pikachu\" only has 3 units available."
+    ],
+```
+
+- Each "message" should specify the productId, variant, name and products available (and more helpful properties) in an object instead of a message.
+- This should make it easier to create a better message for the end user (the message might need to be translated, instead of showing the message directly as the backend sends it)
+- Maybe the current message string could still be added to this new object, if you think its a good idea.
+- Rename `messages` to a more appropiate name, only if needed.
 
 🤖
 
 # Summary
 
-Expanded the shared validatePassword helper in auth.service.ts — the single source of truth that both register and changePassword already call — so the new rules apply to registration and change-password automatically.
+Replaced the cart-validation messages: string[] with a structured issues: CartIssue[], so the frontend can build its own (translatable) copy instead of displaying the backend's English strings.
 
-Rules enforced (mirroring the frontend's passwordStrengthValidator, same regexes):
+cart.service.ts — the core change:
 
-- min 8 / max 72 characters
-- at least one lowercase [a-z], one uppercase [A-Z], one digit \d, and one special char [^a-zA-Z\d]
+- Added a CartIssueCode union (7 stable codes) and a CartIssue interface.
+- Each issue carries: code, the identifying productId / productName / variantId, code-specific details, and the original English message (kept for convenience, per your suggestion).
+- Renamed messages → issues throughout (CartValidationResult, validateCartItem, validateCart), and isValid now keys off issues.length.
 
-## Changes:
+The code-specific detail fields, by code:
 
-- authConfig.ts — added passwordMaxLength: 72.
-- auth.service.ts — validatePassword now checks length bounds + the four character classes.
-- swagger.ts — updated RegisterInput and ChangePasswordInput password fields (added maxLength: 72, full rule descriptions, and fixed the RegisterInput example — "supersecret" would no longer have passed; now "Supersecret1!").
-- README.md — added a reusable Password strength rules table; register and change-password now link to it.
+- OUT_OF_STOCK / INSUFFICIENT_STOCK → availableStock + requestedQuantity
+- PRICE_CHANGED → previousUnitPrice + currentUnitPrice
+- SUBTOTAL_CHANGED → previousSubtotal + currentSubtotal
 
-## Three decisions worth flagging:
+## Docs (same change, as required):
 
-1. Max length = 72. You asked what the standard is — bcryptjs silently truncates input past 72 bytes, so anything longer is ignored and gives a false sense of strength. Capping at 72 makes the whole password meaningful. (Commented in authConfig.ts.)
-2. Fail-fast, not aggregated. The frontend validator collects all broken rules at once; the backend follows this repo's existing validator style and throws the first broken rule as a 400. So a password missing both a digit and an uppercase letter returns one message at a time. The frontend already does the rich per-field validation, so the backend acts as the safety net — but if you'd prefer it to return all violations in one response, I can switch it to aggregate.
-3. Error format. The codes you listed (passwordLowercase, etc.) are produced by the frontend validator itself. The backend returns human-readable strings in the standard error field (e.g. Field "password" must contain at least one uppercase letter), consistent with every other endpoint's envelope rather than echoing those codes. Let me know if you actually want the machine codes surfaced in the API response and I'll adjust the shape.
+- swagger.ts — new CartIssue schema (with the code enum and per-field descriptions), CartValidationResult.issues now references it, and the path/response descriptions updated.
+- README.md — added CartIssue / CartIssueCode TypeScript shapes, switched the "what gets checked" table to list codes, and rewrote the example response with two full issue objects.
+
+npx tsc --noEmit passes clean.
+
+A few decisions worth flagging:
+
+1. Name: issues. Picked over messages/findings/problems as the conventional API term. The in-code comments still call them "findings" in prose, which reads fine.
+2. Codes are now a contract. I documented them as "don't rename existing ones" in both the type and swagger, since the frontend switches on them.
+3. VARIANT_UNAVAILABLE covers two cases — variant deleted and variant dimensions changed — keeping the exact original behavior/message. I considered splitting the dimension-mismatch case into its own VARIANT_CHANGED code (arguably more accurate, since the variant still exists), but held off to avoid changing semantics you may rely on. Say the word and I'll split it.
+4. message kept in English. It's labeled convenience-only in every doc; the intended path is code + fields → localized text on the frontend.

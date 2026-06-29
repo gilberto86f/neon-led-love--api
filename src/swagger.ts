@@ -1122,23 +1122,83 @@ export const swaggerSpec = {
           couponCode: { type: "string", nullable: true, example: "55454" },
         },
       },
+      CartIssue: {
+        type: "object",
+        description:
+          "A single problem found while validating a cart line. Switch on `code` to build your own " +
+          "(translatable) copy — `message` is the default English text, kept for convenience. The " +
+          "identifying fields (`productId`, `productName`, `variantId`) are always present; the rest " +
+          "are only present for the codes noted below.",
+        required: ["code", "message", "productId", "productName", "variantId"],
+        properties: {
+          code: {
+            type: "string",
+            enum: [
+              "PRODUCT_UNAVAILABLE",
+              "PRODUCT_INACTIVE",
+              "VARIANT_UNAVAILABLE",
+              "PRICE_CHANGED",
+              "OUT_OF_STOCK",
+              "INSUFFICIENT_STOCK",
+              "SUBTOTAL_CHANGED",
+            ],
+            example: "INSUFFICIENT_STOCK",
+            description: "Stable machine code identifying the problem.",
+          },
+          message: {
+            type: "string",
+            example: 'The product "Pikachu" only has 3 units available.',
+            description:
+              "Default English copy. Prefer rendering from `code` + the fields below so it can be localized.",
+          },
+          productId: { type: "integer", example: 12 },
+          productName: { type: "string", example: "Pikachu" },
+          variantId: { type: "integer", example: 34 },
+          availableStock: {
+            type: "integer",
+            example: 3,
+            description: "Units currently in stock. Present on OUT_OF_STOCK (0) and INSUFFICIENT_STOCK.",
+          },
+          requestedQuantity: {
+            type: "integer",
+            example: 5,
+            description: "Units the cart line asked for. Present on OUT_OF_STOCK and INSUFFICIENT_STOCK.",
+          },
+          previousUnitPrice: {
+            type: "number",
+            example: 1500,
+            description: "The unit price the cart held. Present on PRICE_CHANGED.",
+          },
+          currentUnitPrice: {
+            type: "number",
+            example: 1800,
+            description: "The live unit price. Present on PRICE_CHANGED.",
+          },
+          previousSubtotal: {
+            type: "number",
+            example: 3000,
+            description: "The line subtotal the cart held. Present on SUBTOTAL_CHANGED.",
+          },
+          currentSubtotal: {
+            type: "number",
+            example: 3600,
+            description: "The recalculated line subtotal. Present on SUBTOTAL_CHANGED.",
+          },
+        },
+      },
       CartValidationResult: {
         type: "object",
         description:
-          "Result of validating a cart. `isValid` is true only when `messages` is empty. " +
+          "Result of validating a cart. `isValid` is true only when `issues` is empty. " +
           "`items` is the refreshed cart — every line carries the newest product name, image, variant " +
           "dimensions, price, discount, and recalculated subtotal, so the frontend can overwrite its " +
           "stored cart without further requests.",
         properties: {
           isValid: { type: "boolean", example: false },
-          messages: {
+          issues: {
             type: "array",
-            items: { type: "string" },
-            example: [
-              'The price of product "Bulbasaur" has changed.',
-              'The product "Pikachu" only has 3 units available.',
-            ],
-            description: "One human-readable message per problem found. Empty when the cart is valid.",
+            items: { $ref: "#/components/schemas/CartIssue" },
+            description: "One structured issue per problem found. Empty when the cart is valid.",
           },
           items: {
             type: "array",
@@ -2999,10 +3059,11 @@ export const swaggerSpec = {
           "For every line it verifies the product exists and is active, the variant still exists and matches " +
           "(width/height/sizeUnit), there is enough stock, and the price (originalUnitPrice, unitPrice, " +
           "discountType, discount) and per-line subtotal are still correct.\n\n" +
-          "Always returns `200` with `isValid` and a list of `messages` (one per problem). Business problems " +
-          "such as a stale price or low stock are **not** HTTP errors — only a malformed request body returns " +
-          "`400`. The response also returns a **refreshed** copy of every item plus recalculated totals so the " +
-          "frontend can sync its cart without extra requests.\n\n" +
+          "Always returns `200` with `isValid` and a list of `issues` (one structured object per problem, " +
+          "each with a machine `code`, the product/variant it refers to, and code-specific details). " +
+          "Business problems such as a stale price or low stock are **not** HTTP errors — only a malformed " +
+          "request body returns `400`. The response also returns a **refreshed** copy of every item plus " +
+          "recalculated totals so the frontend can sync its cart without extra requests.\n\n" +
           "`couponCode` is accepted but not yet applied; shipping/tax/discount amounts are passed through " +
           "(defaulting to 0) for now.",
         requestBody: {
@@ -3016,7 +3077,7 @@ export const swaggerSpec = {
         responses: {
           200: {
             description:
-              "Validation result. Check `isValid`; `messages` lists any problems and `items` holds the refreshed cart.",
+              "Validation result. Check `isValid`; `issues` lists any problems and `items` holds the refreshed cart.",
             content: {
               "application/json": {
                 schema: { $ref: "#/components/schemas/CartValidationResponse" },

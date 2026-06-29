@@ -1102,8 +1102,8 @@ type CartItem = {
 
 // What you get back (inside the usual `data` envelope)
 type CartValidationResult = {
-  isValid: boolean;           // true only when messages is empty
-  messages: string[];         // one human-readable message per problem
+  isValid: boolean;           // true only when issues is empty
+  issues: CartIssue[];        // one structured issue per problem (see below)
   items: CartItem[];          // refreshed cart — newest data for every line
   subtotalAmount: number;     // recalculated from the refreshed line subtotals
   shippingAmount: number;     // passed through (default 0)
@@ -1111,21 +1111,47 @@ type CartValidationResult = {
   discountAmount: number;     // passed through (default 0)
   totalAmount: number;        // subtotal + shipping + tax − discount
 };
+
+type CartIssue = {
+  code: CartIssueCode;        // machine code — switch on this to build your own copy
+  message: string;            // default English text — convenience, prefer translating from `code`
+  productId: number;          // which product the issue is about
+  productName: string;
+  variantId: number;          // which cart-line variant
+  // Extra fields, only present for the codes noted:
+  availableStock?: number;    // OUT_OF_STOCK (0) and INSUFFICIENT_STOCK
+  requestedQuantity?: number; // OUT_OF_STOCK and INSUFFICIENT_STOCK
+  previousUnitPrice?: number; // PRICE_CHANGED
+  currentUnitPrice?: number;  // PRICE_CHANGED
+  previousSubtotal?: number;  // SUBTOTAL_CHANGED
+  currentSubtotal?: number;   // SUBTOTAL_CHANGED
+};
+
+type CartIssueCode =
+  | "PRODUCT_UNAVAILABLE"   // product no longer exists
+  | "PRODUCT_INACTIVE"      // product exists but is disabled
+  | "VARIANT_UNAVAILABLE"   // variant was removed, or its dimensions changed
+  | "PRICE_CHANGED"         // originalUnitPrice / unitPrice / discount changed
+  | "OUT_OF_STOCK"          // variant has 0 stock
+  | "INSUFFICIENT_STOCK"    // requested quantity exceeds available stock
+  | "SUBTOTAL_CHANGED";     // the line subtotal no longer matches unitPrice * quantity
 ```
+
+Because each issue carries a stable `code` plus the raw data (available stock, old/new price, etc.), the frontend can build its own message — translated, formatted, however it likes — instead of showing the backend's English `message` directly.
 
 **What gets checked, per item:**
 
-| Check    | What it validates                                                      | Example message                                          |
-| -------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
-| Product  | The product still exists and is active                                | `The product "Bulbasaur" is no longer available.` / `The product "Bulbasaur" is inactive.` |
-| Variant  | The variant still exists and its `width` / `height` / `sizeUnit` match | `The selected variant for "Bulbasaur" is no longer available.` |
-| Stock    | `quantity <= variant.stock`                                           | `The product "Pikachu" only has 3 units available.` / `The product "Pikachu" is out of stock.` |
-| Pricing  | `originalUnitPrice`, `unitPrice`, `discountType`, `discount` still match | `The price of product "Bulbasaur" has changed.`         |
-| Subtotal | The line's `subtotalAmount` equals `unitPrice * quantity`             | `The subtotal for "Bulbasaur" has changed.`             |
+| Check    | What it validates                                                      | Issue `code`(s)                          |
+| -------- | --------------------------------------------------------------------- | ---------------------------------------- |
+| Product  | The product still exists and is active                                | `PRODUCT_UNAVAILABLE` / `PRODUCT_INACTIVE` |
+| Variant  | The variant still exists and its `width` / `height` / `sizeUnit` match | `VARIANT_UNAVAILABLE`                    |
+| Stock    | `quantity <= variant.stock`                                           | `OUT_OF_STOCK` / `INSUFFICIENT_STOCK`    |
+| Pricing  | `originalUnitPrice`, `unitPrice`, `discountType`, `discount` still match | `PRICE_CHANGED`                       |
+| Subtotal | The line's `subtotalAmount` equals `unitPrice * quantity`             | `SUBTOTAL_CHANGED`                       |
 
 **How it behaves:**
 
-- It **always** returns `200`. A stale price or low stock is a *finding*, not an HTTP error — findings go into `messages` and flip `isValid` to `false`. Only a malformed request body (missing `items`, wrong field types, etc.) returns `400`.
+- It **always** returns `200`. A stale price or low stock is a *finding*, not an HTTP error — findings go into `issues` and flip `isValid` to `false`. Only a malformed request body (missing `items`, wrong field types, etc.) returns `400`.
 - `items` in the response is a **refreshed** copy of your cart: each line carries the newest `productName`, `productImageUrl`, variant dimensions, `originalUnitPrice`, `unitPrice`, `discountType`, `discount`, and recalculated `subtotalAmount`. `quantity` and `dateAddedToCart` are preserved from your request. Use this to overwrite your LocalStorage cart in one shot — no extra requests needed.
 - `productImageUrl` keeps the image you sent if it still belongs to the product; otherwise it falls back to the product's first image (or `null`).
 - Totals are recalculated: `subtotalAmount` is the sum of the refreshed line subtotals; `totalAmount` is `subtotal + shipping + tax − discount`. `shippingAmount`, `taxAmount`, and `discountAmount` are currently **passed through** from your request (defaulting to `0`) — there is no shipping/tax/coupon engine yet.
@@ -1139,9 +1165,25 @@ type CartValidationResult = {
   "status": 200,
   "data": {
     "isValid": false,
-    "messages": [
-      "The price of product \"Bulbasaur\" has changed.",
-      "The product \"Pikachu\" only has 3 units available."
+    "issues": [
+      {
+        "code": "PRICE_CHANGED",
+        "message": "The price of product \"Bulbasaur\" has changed.",
+        "productId": 7,
+        "productName": "Bulbasaur",
+        "variantId": 21,
+        "previousUnitPrice": 1500,
+        "currentUnitPrice": 1800
+      },
+      {
+        "code": "INSUFFICIENT_STOCK",
+        "message": "The product \"Pikachu\" only has 3 units available.",
+        "productId": 12,
+        "productName": "Pikachu",
+        "variantId": 34,
+        "availableStock": 3,
+        "requestedQuantity": 5
+      }
     ],
     "items": [ /* ...refreshed items... */ ],
     "subtotalAmount": 15000,
