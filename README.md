@@ -640,8 +640,8 @@ type ProductInput = {
   slug: string; // required — unique, URL-friendly identifier
   isActive: boolean; // required — set to false to deactivate without deleting
   images?: string[]; // optional — ordered list of image URLs; defaults to []
-  discountType?: string; // optional — e.g. "percentage" or "fixed"
-  discount?: number; // optional — e.g. 10 or 5
+  discountType?: string; // optional — "percentage" or "amount" (alias: "fixed")
+  discount?: number; // optional — percent when "percentage", else a currency amount
 };
 ```
 
@@ -652,8 +652,8 @@ type ProductInput = {
 | `slug`         | string   | yes      | Unique. Used for public URLs. `neon-heart-xl`, etc.                                            |
 | `isActive`     | boolean  | yes      | Whether the product is visible to shoppers. Set to `false` to deactivate without deleting.     |
 | `images`       | string[] | no       | Ordered list of image URLs. The array order is the display order. Defaults to `[]` if omitted. |
-| `discountType` | string   | no       | Free-form tag (`percentage`, `fixed`, …).                                                      |
-| `discount`     | number   | no       | Integer discount value (e.g. `10` for 10%).                                                    |
+| `discountType` | string   | no       | Free-form tag. Cart validation interprets `percentage` (percent off) and `amount`/`fixed` (a currency amount off); any other value applies no discount. |
+| `discount`     | number   | no       | Discount value: a percent when `discountType` is `percentage` (e.g. `10` for 10% off), otherwise a currency amount off (e.g. `5` for $5 off). |
 
 The server rejects a create/update request with `400` if any required field is missing, empty, or whitespace. Strings are trimmed before saving.
 
@@ -1093,7 +1093,7 @@ type CartItem = {
   sizeUnit: string;           // required — e.g. "cm", "inch"
   originalUnitPrice: number;  // required — variant list price
   unitPrice: number;          // required — price after product discount
-  discountType?: string;      // optional — "percentage" | "fixed"
+  discountType?: string;      // optional — "percentage" | "amount" (alias: "fixed")
   discount?: number;          // optional
   quantity: number;           // required — positive integer
   subtotalAmount: number;     // required — unitPrice * quantity
@@ -1119,12 +1119,18 @@ type CartIssue = {
   productName: string;
   variantId: number;          // which cart-line variant
   // Extra fields, only present for the codes noted:
-  availableStock?: number;    // OUT_OF_STOCK (0) and INSUFFICIENT_STOCK
-  requestedQuantity?: number; // OUT_OF_STOCK and INSUFFICIENT_STOCK
-  previousUnitPrice?: number; // PRICE_CHANGED
-  currentUnitPrice?: number;  // PRICE_CHANGED
-  previousSubtotal?: number;  // SUBTOTAL_CHANGED
-  currentSubtotal?: number;   // SUBTOTAL_CHANGED
+  availableStock?: number;            // OUT_OF_STOCK (0) and INSUFFICIENT_STOCK
+  requestedQuantity?: number;         // OUT_OF_STOCK and INSUFFICIENT_STOCK
+  previousUnitPrice?: number;         // PRICE_CHANGED — price after discount, as held
+  currentUnitPrice?: number;          // PRICE_CHANGED — live price after discount
+  previousOriginalUnitPrice?: number; // PRICE_CHANGED — list price (pre-discount), as held
+  currentOriginalUnitPrice?: number;  // PRICE_CHANGED — live list price (pre-discount)
+  previousDiscountType?: string | null; // PRICE_CHANGED — discount type, as held
+  currentDiscountType?: string | null;  // PRICE_CHANGED — live discount type
+  previousDiscount?: number | null;   // PRICE_CHANGED — discount value, as held
+  currentDiscount?: number | null;    // PRICE_CHANGED — live discount value
+  previousSubtotal?: number;          // SUBTOTAL_CHANGED
+  currentSubtotal?: number;           // SUBTOTAL_CHANGED
 };
 
 type CartIssueCode =
@@ -1148,6 +1154,8 @@ Because each issue carries a stable `code` plus the raw data (available stock, o
 | Stock    | `quantity <= variant.stock`                                           | `OUT_OF_STOCK` / `INSUFFICIENT_STOCK`    |
 | Pricing  | `originalUnitPrice`, `unitPrice`, `discountType`, `discount` still match | `PRICE_CHANGED`                       |
 | Subtotal | The line's `subtotalAmount` equals `unitPrice * quantity`             | `SUBTOTAL_CHANGED`                       |
+
+> **Note:** `PRICE_CHANGED` fires when **any** of the four pricing fields differs — not just `unitPrice`. A product's list price (`originalUnitPrice`) can change while the after-discount `unitPrice` stays the same (e.g. when there is no discount and the list price moved by an amount your cart hadn't caught up to). That's why the issue carries `previous*`/`current*` values for **all** of `originalUnitPrice`, `unitPrice`, `discountType`, and `discount`: compare those to see what actually changed — `previousUnitPrice` and `currentUnitPrice` being equal does **not** mean nothing changed.
 
 **How it behaves:**
 
@@ -1173,7 +1181,13 @@ Because each issue carries a stable `code` plus the raw data (available stock, o
         "productName": "Bulbasaur",
         "variantId": 21,
         "previousUnitPrice": 1500,
-        "currentUnitPrice": 1800
+        "currentUnitPrice": 1800,
+        "previousOriginalUnitPrice": 1500,
+        "currentOriginalUnitPrice": 1800,
+        "previousDiscountType": null,
+        "currentDiscountType": null,
+        "previousDiscount": 0,
+        "currentDiscount": 0
       },
       {
         "code": "INSUFFICIENT_STOCK",

@@ -498,12 +498,16 @@ export const swaggerSpec = {
             type: "string",
             example: "percentage",
             description:
-              'Free-form discount label (e.g. "percentage", "fixed").',
+              'Free-form discount label. Cart validation interprets "percentage" ' +
+              '(percent off) and "amount"/"fixed" (a currency amount off); any other ' +
+              "value applies no discount.",
           },
           discount: {
             type: "integer",
             example: 10,
-            description: "Integer discount value (e.g. 10 for 10%).",
+            description:
+              'Integer discount value: a percent when discountType is "percentage" ' +
+              '(e.g. 10 for 10% off), otherwise a currency amount off (e.g. 5 for $5 off).',
           },
         },
       },
@@ -1081,7 +1085,9 @@ export const swaggerSpec = {
             type: "string",
             nullable: true,
             example: "percentage",
-            description: 'Product discount type, e.g. "percentage" or "fixed".',
+            description:
+              'Product discount type. "percentage" applies a percent off; ' +
+              '"amount" (or "fixed") applies a currency amount off.',
           },
           discount: { type: "integer", nullable: true, example: 1 },
           quantity: { type: "integer", minimum: 1, example: 1 },
@@ -1167,12 +1173,50 @@ export const swaggerSpec = {
           previousUnitPrice: {
             type: "number",
             example: 1500,
-            description: "The unit price the cart held. Present on PRICE_CHANGED.",
+            description:
+              "The unit price (after discount) the cart held. Present on PRICE_CHANGED.",
           },
           currentUnitPrice: {
             type: "number",
             example: 1800,
-            description: "The live unit price. Present on PRICE_CHANGED.",
+            description:
+              "The live unit price (after discount). Present on PRICE_CHANGED.",
+          },
+          previousOriginalUnitPrice: {
+            type: "number",
+            example: 1589,
+            description:
+              "The list price (before discount) the cart held. Present on PRICE_CHANGED.",
+          },
+          currentOriginalUnitPrice: {
+            type: "number",
+            example: 1587,
+            description:
+              "The live list price (before discount). Present on PRICE_CHANGED.",
+          },
+          previousDiscountType: {
+            type: "string",
+            nullable: true,
+            example: "amount",
+            description: "The discount type the cart held. Present on PRICE_CHANGED.",
+          },
+          currentDiscountType: {
+            type: "string",
+            nullable: true,
+            example: "amount",
+            description: "The live discount type. Present on PRICE_CHANGED.",
+          },
+          previousDiscount: {
+            type: "number",
+            nullable: true,
+            example: 0,
+            description: "The discount value the cart held. Present on PRICE_CHANGED.",
+          },
+          currentDiscount: {
+            type: "number",
+            nullable: true,
+            example: 0,
+            description: "The live discount value. Present on PRICE_CHANGED.",
           },
           previousSubtotal: {
             type: "number",

@@ -73,9 +73,17 @@ export interface CartIssue {
   availableStock?: number;
   /** Units the cart line asked for. Present on OUT_OF_STOCK and INSUFFICIENT_STOCK. */
   requestedQuantity?: number;
-  /** The unit price the cart held vs. the live one. Present on PRICE_CHANGED. */
+  /** The unit price (after discount) the cart held vs. the live one. Present on PRICE_CHANGED. */
   previousUnitPrice?: number;
   currentUnitPrice?: number;
+  /** The list price (before discount) the cart held vs. the live one. Present on PRICE_CHANGED. */
+  previousOriginalUnitPrice?: number;
+  currentOriginalUnitPrice?: number;
+  /** The product discount the cart held vs. the live one. Present on PRICE_CHANGED. */
+  previousDiscountType?: string | null;
+  currentDiscountType?: string | null;
+  previousDiscount?: number | null;
+  currentDiscount?: number | null;
   /** The line subtotal the cart held vs. the recalculated one. Present on SUBTOTAL_CHANGED. */
   previousSubtotal?: number;
   currentSubtotal?: number;
@@ -188,7 +196,9 @@ const computeUnitPrice = (
   if (discountType === "percentage") {
     return originalUnitPrice * (1 - discount / 100);
   }
-  if (discountType === "fixed") {
+  // Absolute (currency) discount. The storefront uses "amount"; "fixed" is
+  // accepted as an alias so older/other data keeps working.
+  if (discountType === "amount" || discountType === "fixed") {
     return Math.max(0, originalUnitPrice - discount);
   }
   // Unknown/absent discount type → no discount applied.
@@ -305,6 +315,12 @@ const validateCartItem = (
       ...ref,
       previousUnitPrice: item.unitPrice,
       currentUnitPrice: unitPrice,
+      previousOriginalUnitPrice: item.originalUnitPrice,
+      currentOriginalUnitPrice: originalUnitPrice,
+      previousDiscountType: item.discountType ?? null,
+      currentDiscountType: discountType ?? null,
+      previousDiscount: item.discount ?? null,
+      currentDiscount: discount ?? null,
     });
   }
 
