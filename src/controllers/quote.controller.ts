@@ -114,11 +114,6 @@ export const quoteController = {
   update: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const id = parseId(req.params.id);
-      // Ownership is decided from the stored owner, never the request body.
-      const existing = await quoteService.getQuoteById(id);
-      if (!req.auth || !canAccessQuote(req.auth, existing.clientId)) {
-        throw new HttpError(403, FORBIDDEN_MESSAGE);
-      }
       const quote = await quoteService.updateQuote(id, req.body);
       res.status(200).json(ok(quote));
     } catch (err) {

@@ -269,8 +269,9 @@ Authorization: Bearer <accessToken>
 | Create / update orders                                           |  ✅   |  ✅   | ❌                  |
 | Delete an order                                                  |  ✅   |  ❌   | ❌                  |
 | Create a quote (`POST /api/quotes`)                              |  ✅   |  ✅   | ✅ (guests too)     |
-| List / read / update quotes                                      |  ✅   |  ✅   | ✅ (own quotes only) |
-| Delete a quote                                                   |  ✅   |  ✅   | ❌                  |
+| List / read quotes                                               |  ✅   |  ✅   | ✅ (own quotes only) |
+| Update a quote                                                   |  ✅   |  ✅   | ❌                  |
+| Delete a quote                                                   |  ✅   |  ❌   | ❌                  |
 
 **Ownership rules.** "Own only" means the API compares the `id` inside your token to the resource — never an `id` from the request body. A client can `GET/PUT/DELETE /api/users/{theirOwnId}` but gets `403` for anyone else's id; `GET /api/orders` returns only their own orders. When a non-super user updates their own account, any `role` or `status` they put in the body is **ignored** (you can't promote yourself).
 
@@ -562,7 +563,7 @@ Each quote carries a `status` — a **number**, not a string — describing wher
 | PUT    | `/quotes/:id`  | [Quote](#quote-fields)          | Replace a quote (staff pricing etc.)  |
 | DELETE | `/quotes/:id`  | —                               | Delete a quote                        |
 
-> **Access:** creating a quote is **public** — guests must be able to request one, so `POST /quotes` needs no token. Every other endpoint requires a token. A `client` may list, read, and update only **their own** quotes (`GET /quotes` is auto-filtered to them; touching someone else's quote returns `403`); `super`/`admin` see and edit all. Guest-submitted quotes have no owner and are staff-only. Deleting a quote is `super`/`admin`.
+> **Access:** creating a quote is **public** — guests must be able to request one, so `POST /quotes` needs no token. Every other endpoint requires a token. A `client` may list and read only **their own** quotes (`GET /quotes` is auto-filtered to them; reading someone else's quote returns `403`); `super`/`admin` see all. Guest-submitted quotes have no owner and are staff-only. Updating a quote is `super`/`admin`; **only `super` may delete** one.
 
 On create, the server sets `status = 1` (SUBMITTED), stamps `createdAt`/`updatedAt`, and leaves everything outside the request half empty. `PUT` replaces the whole quote and refreshes `updatedAt`; omit `status` in the body to keep the current one.
 
@@ -1207,7 +1208,7 @@ Validation rules:
 - `status`, when provided, must be an integer 0–9.
 - Returns `404` from `GET /quotes/:id`, `PUT /quotes/:id`, or `DELETE /quotes/:id` when no quote matches.
 
-**Create sets the rest for you:** `POST /quotes` forces `status = 1` (SUBMITTED), stamps `createdAt`/`updatedAt`, defaults `price` to `0`, and leaves the whole quote/pricing half empty. **PUT replaces the whole record** and refreshes `updatedAt`; ownership is decided from the stored owner, never from a `clientId` in the body.
+**Create sets the rest for you:** `POST /quotes` forces `status = 1` (SUBMITTED), stamps `createdAt`/`updatedAt`, defaults `price` to `0`, and leaves the whole quote/pricing half empty. **PUT replaces the whole record** and refreshes `updatedAt` (super/admin only).
 
 ### Cart validation fields
 

@@ -56,8 +56,8 @@ export const swaggerSpec = {
       "| Delete orders | ✅ | ❌ | ❌ |\n" +
       "| Create a quote (`POST /api/quotes`) | ✅ | ✅ | ✅ (guests too) |\n" +
       "| List / read **own** quotes | ✅ | ✅ | ✅ (own only) |\n" +
-      "| Update **own** quote | ✅ | ✅ | ✅ (own only) |\n" +
-      "| Delete quotes | ✅ | ✅ | ❌ |\n\n" +
+      "| Update quotes | ✅ | ✅ | ❌ |\n" +
+      "| Delete quotes | ✅ | ❌ | ❌ |\n\n" +
       "Notes: super bypasses all checks. Ownership uses the token's user id, never an id from the body. " +
       "Public self-registration always creates a `client`; a client updating its own account cannot change its `role`/`status`.",
   },
@@ -125,8 +125,8 @@ export const swaggerSpec = {
         "configuration); staff later fill in the **quote/pricing** half and move the quote through its lifecycle " +
         "(`status` is a numeric enum, 0 = DRAFT … 9 = EXPIRED; new requests start at 1 = SUBMITTED).\n\n" +
         "Authorization: creating a quote is **public** (guests included). Listing and reading require authentication — " +
-        "a client sees only their **own** quotes, super/admin see all. Updating is client-own or staff; " +
-        "deleting is super/admin only.",
+        "a client sees only their **own** quotes, super/admin see all. Updating is super/admin; " +
+        "deleting is super only.",
     },
     {
       name: "Cart",
@@ -3410,8 +3410,7 @@ export const swaggerSpec = {
         summary: "Update quote",
         description:
           "Replaces the quote with the provided full `Quote` object and refreshes `updatedAt`. " +
-          "Requires authentication; a client may update only their own quote, super/admin any. " +
-          "Omit `status` to keep the current status.",
+          "Super/admin only. Omit `status` to keep the current status.",
         parameters: [{ $ref: "#/components/parameters/quoteId" }],
         requestBody: {
           required: true,
@@ -3439,7 +3438,7 @@ export const swaggerSpec = {
       delete: {
         tags: ["Quotes"],
         summary: "Delete quote",
-        description: "Deletes a quote. Super/admin only.",
+        description: "Deletes a quote. Super only.",
         parameters: [{ $ref: "#/components/parameters/quoteId" }],
         responses: {
           200: {
