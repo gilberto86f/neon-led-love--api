@@ -1213,6 +1213,7 @@ export const swaggerSpec = {
           phoneNumber: { type: "string", example: "+52 55 1234 5678" },
           isCustom: { type: "boolean", example: true },
           price: { type: "number", example: 0 },
+          notes: { type: "string", nullable: true, example: "Wants a warm-white glow." },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },

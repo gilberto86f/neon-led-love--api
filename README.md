@@ -567,7 +567,7 @@ Each quote carries a `status` — a **number**, not a string — describing wher
 
 On create, the server sets `status = 1` (SUBMITTED), stamps `createdAt`/`updatedAt`, and leaves everything outside the request half empty. `PUT` replaces the whole quote and refreshes `updatedAt`; omit `status` in the body to keep the current one.
 
-The list endpoint returns a **compact** shape per quote — `id`, `status`, `clientId`, `fullName`, `email`, `phoneNumber`, `isCustom`, `price`, `createdAt`, `updatedAt` — and supports the standard `page` / `perPage` pagination plus:
+The list endpoint returns a **compact** shape per quote — `id`, `status`, `clientId`, `fullName`, `email`, `phoneNumber`, `isCustom`, `price`, `notes`, `createdAt`, `updatedAt` — and supports the standard `page` / `perPage` pagination plus:
 
 - `search` — case-insensitive substring match against `fullName` and `notes`.
 - `status` — filter by a numeric status (0–9). Omit to return all.

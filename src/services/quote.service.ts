@@ -384,6 +384,7 @@ const LIST_SELECT = {
   phoneNumber: true,
   isCustom: true,
   price: true,
+  notes: true,
   createdAt: true,
   updatedAt: true,
 } as const;
