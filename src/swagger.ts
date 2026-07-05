@@ -1214,6 +1214,11 @@ export const swaggerSpec = {
           isCustom: { type: "boolean", example: true },
           price: { type: "number", example: 0 },
           notes: { type: "string", nullable: true, example: "Wants a warm-white glow." },
+          images: {
+            type: "array",
+            items: { type: "string" },
+            example: ["/uploads/quotes/ref-1.png"],
+          },
           createdAt: { type: "string", format: "date-time" },
           updatedAt: { type: "string", format: "date-time" },
         },

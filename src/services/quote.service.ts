@@ -385,6 +385,7 @@ const LIST_SELECT = {
   isCustom: true,
   price: true,
   notes: true,
+  images: true,
   createdAt: true,
   updatedAt: true,
 } as const;
