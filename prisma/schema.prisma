@@ -129,6 +129,7 @@ model User {
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
   orders                  Order[]
+  quotes                  Quote[]
 }
 
 model Order {
@@ -179,4 +180,63 @@ model Slide {
   justifyContent String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// A custom-neon quote request. Guests and clients submit the request half
+// (CustomQuoteRequestData); staff later fill in the pricing/quote half.
+// Nested configuration (neonTexts, size) is stored as JSON; string collections
+// (images, mockUpQuote) as text arrays. `status` is the numeric QuoteStatus
+// enum (0 = DRAFT … 9 = EXPIRED); new requests default to 1 = SUBMITTED.
+model Quote {
+  id           Int      @id @default(autoincrement())
+  status       Int      @default(1)
+  price        Float    @default(0)
+
+  // Requester (optional — guests may submit without an account).
+  clientId     Int?
+  client       User?    @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  fullName     String
+  email        String
+  phoneNumber  String
+  isCustom     Boolean  @default(false)
+
+  // Custom-neon configuration (from CustomQuoteRequestData / CustomNeon).
+  neonTexts       Json?
+  alignment       String?
+  size            Json?
+  notes           String?
+  waterproof      Boolean?
+  backboardStyle  String?
+  backboardColor  String?
+  wallMountingKit String?
+  signMountingKit Boolean?
+  remoteControl   Boolean?
+  width           Float?
+  height          Float?
+  images          String[]
+  sizeUnit        String?
+
+  // Staff-filled quote/pricing half (empty until the team prices the request).
+  descriptionQuote             String?
+  descriptionPrice             Float?
+  descriptionSuggestedPrice    Float?
+  widthQuote                   Float?
+  heightQuote                  Float?
+  sizePrice                    Float?
+  sizeSuggestedPrice           Float?
+  waterproofQuote              Boolean?
+  waterproofPrice              Float?
+  waterproofSuggestedPrice     Float?
+  backboardStyleQuote          String?
+  backboardStylePrice          Float?
+  backboardStyleSuggestedPrice Float?
+  backboardColorQuote          String?
+  backboardColorPrice          Float?
+  backboardColorSuggestedPrice Float?
+  mockUpQuote                  String[]
+  mockUpPrice                  Float?
+  mockUpSuggestedPrice         Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

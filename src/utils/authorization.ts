@@ -28,3 +28,13 @@ export const canManageUser = (auth: AccessTokenPayload, requestedUserId: number)
  */
 export const canAccessOrder = (auth: AccessTokenPayload, ownerUserId: number): boolean =>
   isStaff(auth.role) || isSelf(auth, ownerUserId);
+
+/**
+ * Quotes — staff (super/admin) may access any quote; a client may access only
+ * quotes they own. Guest-submitted quotes have no owner (`clientId === null`)
+ * and are therefore reachable by staff only.
+ */
+export const canAccessQuote = (
+  auth: AccessTokenPayload,
+  ownerClientId: number | null,
+): boolean => isStaff(auth.role) || (ownerClientId !== null && isSelf(auth, ownerClientId));

@@ -7,6 +7,7 @@ import slideRoutes from './slide.routes';
 import imageRoutes from './image.routes';
 import userRoutes from './user.routes';
 import orderRoutes from './order.routes';
+import quoteRoutes from './quote.routes';
 import cartRoutes from './cart.routes';
 import authRoutes from './auth.routes';
 
@@ -21,6 +22,7 @@ router.use('/slides', slideRoutes);
 router.use('/images', imageRoutes);
 router.use('/users', userRoutes);
 router.use('/orders', orderRoutes);
+router.use('/quotes', quoteRoutes);
 router.use('/cart', cartRoutes);
 
 export default router;

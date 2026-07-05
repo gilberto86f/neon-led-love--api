@@ -268,6 +268,9 @@ Authorization: Bearer <accessToken>
 | List / read orders                                               |  ✅   |  ✅   | ✅ (own orders only) |
 | Create / update orders                                           |  ✅   |  ✅   | ❌                  |
 | Delete an order                                                  |  ✅   |  ❌   | ❌                  |
+| Create a quote (`POST /api/quotes`)                              |  ✅   |  ✅   | ✅ (guests too)     |
+| List / read / update quotes                                      |  ✅   |  ✅   | ✅ (own quotes only) |
+| Delete a quote                                                   |  ✅   |  ✅   | ❌                  |
 
 **Ownership rules.** "Own only" means the API compares the `id` inside your token to the resource — never an `id` from the request body. A client can `GET/PUT/DELETE /api/users/{theirOwnId}` but gets `403` for anyone else's id; `GET /api/orders` returns only their own orders. When a non-super user updates their own account, any `role` or `status` they put in the body is **ignored** (you can't promote yourself).
 
@@ -528,6 +531,50 @@ The list endpoint supports the standard `page` / `perPage` pagination plus two o
 Example: `GET /api/orders?status=processing&search=lovelace&page=1&perPage=20`
 
 Deleting an order also deletes its items (cascade). Deleting a user who has orders returns `400` with a message like `Cannot delete user 5: user has 3 orders. Delete them first.` — remove the user's orders first.
+
+**Quotes**
+
+A request for a **custom** LED neon sign. A shopper designs a sign in the frontend's "Custom Neon" builder and submits it here; the sign isn't a catalog product, so it can't go through the normal cart. A quote has two halves:
+
+- the **request** half — contact info (`fullName`, `email`, `phoneNumber`) plus the custom-neon configuration (texts, size, backboard, mounting kits, reference images…). This is what the shopper sends.
+- the **quote / pricing** half — the numbers your team fills in later (`price`, the per-feature `*Quote` / `*Price` / `*SuggestedPrice` fields, mock-ups). Empty until staff price the request.
+
+Each quote carries a `status` — a **number**, not a string — describing where it is in its lifecycle:
+
+| # | Status                 | Meaning                                                        |
+| - | ---------------------- | ------------------------------------------------------------- |
+| 0 | `DRAFT`                | Not yet submitted (may only exist on the frontend).           |
+| 1 | `SUBMITTED`            | Submitted and awaiting attention. **New requests start here.**|
+| 2 | `UNDER_REVIEW`         | The team is evaluating feasibility and cost.                  |
+| 3 | `WAITING_FOR_CUSTOMER` | Waiting on info/approval from the customer.                   |
+| 4 | `QUOTED`               | A price and validity period were sent.                        |
+| 5 | `ACCEPTED`             | The customer accepted the quote.                              |
+| 6 | `CONVERTED_TO_ORDER`   | Turned into an order.                                         |
+| 7 | `REJECTED`             | The company can't carry out the project.                      |
+| 8 | `CANCELLED`            | The client decided not to proceed.                            |
+| 9 | `EXPIRED`              | The quote expired.                                            |
+
+| Method | Path           | Body (JSON)                     | What it does                          |
+| ------ | -------------- | ------------------------------- | ------------------------------------- |
+| GET    | `/quotes`      | —                               | List quotes (paginated)               |
+| GET    | `/quotes/:id`  | —                               | Get one full quote by ID              |
+| POST   | `/quotes`      | [QuoteRequest](#quote-fields)   | Submit a new custom-neon quote request|
+| PUT    | `/quotes/:id`  | [Quote](#quote-fields)          | Replace a quote (staff pricing etc.)  |
+| DELETE | `/quotes/:id`  | —                               | Delete a quote                        |
+
+> **Access:** creating a quote is **public** — guests must be able to request one, so `POST /quotes` needs no token. Every other endpoint requires a token. A `client` may list, read, and update only **their own** quotes (`GET /quotes` is auto-filtered to them; touching someone else's quote returns `403`); `super`/`admin` see and edit all. Guest-submitted quotes have no owner and are staff-only. Deleting a quote is `super`/`admin`.
+
+On create, the server sets `status = 1` (SUBMITTED), stamps `createdAt`/`updatedAt`, and leaves everything outside the request half empty. `PUT` replaces the whole quote and refreshes `updatedAt`; omit `status` in the body to keep the current one.
+
+The list endpoint returns a **compact** shape per quote — `id`, `status`, `clientId`, `fullName`, `email`, `phoneNumber`, `isCustom`, `price`, `createdAt`, `updatedAt` — and supports the standard `page` / `perPage` pagination plus:
+
+- `search` — case-insensitive substring match against `fullName` and `notes`.
+- `status` — filter by a numeric status (0–9). Omit to return all.
+- `clientId` — filter by owner (super/admin only; clients are always scoped to themselves).
+- `sortBy` — one of `price`, `status`, `createdAt`, `updatedAt`, `fullName`. Defaults to `createdAt`.
+- `sortDirection` — `asc` or `desc`. Defaults to `desc` (newest first). Sorting is applied before pagination.
+
+Example: `GET /api/quotes?status=1&sortBy=price&sortDirection=asc&search=ada&page=1&perPage=20`
 
 **Cart**
 
@@ -1065,6 +1112,102 @@ Validation rules:
 **Why items are snapshots:** if a product is renamed or repriced after an order ships, the order should still show the data the customer actually saw and paid for. `productId` is stored as a reference but is **not** a foreign key — the product can be deleted without breaking historical orders.
 
 **PUT replaces everything, including items:** updating an order deletes all existing items and recreates them from the request body, inside a single transaction. If you only need to change the status or tracking number, you still need to send the full order payload.
+
+### Quote fields
+
+A quote is stored as a wide, mostly-optional record. Only the three contact fields are required; everything else is optional custom-neon configuration (on create) or staff pricing (added later via `PUT`). Nested configuration is stored as JSON.
+
+```ts
+// What a guest/client sends to POST /quotes (the "request" half)
+type CustomQuoteRequestData = {
+  fullName: string;          // required
+  email: string;             // required — must be a valid email
+  phoneNumber: string;       // required
+  clientId?: number;         // optional — an existing user id (guests omit it)
+  isCustom?: boolean;
+  width?: number;            // ≥ 0
+  height?: number;           // ≥ 0
+  sizeUnit?: string;
+  images?: string[];         // reference image URLs
+  neonTexts?: NeonTextConfig[];
+  alignment?: string;
+  size?: NeonSize;
+  notes?: string;
+  waterproof?: boolean;
+  backboardStyle?: string;
+  backboardColor?: string;
+  wallMountingKit?: string;
+  signMountingKit?: boolean;
+  remoteControl?: boolean;
+};
+
+type NeonTextConfig = {
+  text: string;              // required
+  color: object;             // required — opaque color object from the frontend
+  font: {                    // required
+    class: string;
+    complexity: number;
+    name: string;
+    upperDiffersFromLowercase: number;
+  };
+  size?: string;
+  letterSpacing?: number;
+  lineHeight?: number;
+  italics?: boolean;
+  uppercase?: boolean;
+  horizontalPosition?: number;
+  verticalPosition?: number;
+};
+
+type NeonSize = {
+  width: number;             // required
+  maxCharacters: number;     // required
+  default?: boolean;
+};
+
+// PUT /quotes/:id additionally accepts the "quote / pricing" half:
+type QuoteExtras = {
+  status?: number;           // 0–9 (see the status table above); omit to keep current
+  price?: number;            // ≥ 0
+  descriptionQuote?: string;   descriptionPrice?: number;   descriptionSuggestedPrice?: number;
+  widthQuote?: number;         heightQuote?: number;
+  sizePrice?: number;          sizeSuggestedPrice?: number;
+  waterproofQuote?: boolean;   waterproofPrice?: number;    waterproofSuggestedPrice?: number;
+  backboardStyleQuote?: string; backboardStylePrice?: number; backboardStyleSuggestedPrice?: number;
+  backboardColorQuote?: string; backboardColorPrice?: number; backboardColorSuggestedPrice?: number;
+  mockUpQuote?: string[];      mockUpPrice?: number;        mockUpSuggestedPrice?: number;
+};
+```
+
+**Request-half fields**
+
+| Field         | Type            | Required | Notes                                                       |
+| ------------- | --------------- | -------- | ----------------------------------------------------------- |
+| `fullName`    | string          | yes      | Trimmed before saving.                                      |
+| `email`       | string          | yes      | Must be a valid email; stored lower-cased.                  |
+| `phoneNumber` | string          | yes      | Trimmed before saving.                                      |
+| `clientId`    | number \| null  | no       | Positive integer; must reference an existing user (`400` otherwise). Guests omit it. |
+| `isCustom`    | boolean         | no       | Defaults to `false`.                                        |
+| `width`, `height` | number      | no       | Non-negative.                                               |
+| `sizeUnit`    | string \| null  | no       | E.g. `"cm"`, `"in"`.                                        |
+| `images`      | string[]        | no       | Reference-image URLs (upload them via the `quotes` image endpoint first). |
+| `neonTexts`   | NeonTextConfig[]| no       | Each entry needs `text`, `color`, and a `font` object.      |
+| `size`        | NeonSize \| null| no       | Needs `width` and `maxCharacters`.                          |
+| `alignment`, `notes`, `backboardStyle`, `backboardColor`, `wallMountingKit` | string \| null | no | Free-form. |
+| `waterproof`, `signMountingKit`, `remoteControl` | boolean \| null | no | — |
+
+**Quote-half fields** (accepted by `PUT` only): `status` (numeric, 0–9), `price` (≥ 0), and the `*Quote` / `*Price` / `*SuggestedPrice` per-feature fields plus `mockUpQuote` (string array). All optional; anything omitted is stored as `null` (or `0`/`[]` for `price` and the array fields).
+
+Validation rules:
+
+- `fullName`, `email` (valid format), and `phoneNumber` are required — `400` if missing or invalid.
+- `clientId`, when provided, must be a positive integer for an existing user.
+- `neonTexts` must be an array; each item must have a non-empty `text`, an object `color`, and a `font` object with `class`, `name` (strings) and `complexity`, `upperDiffersFromLowercase` (numbers).
+- `size`, when provided, must have numeric `width` and `maxCharacters`.
+- `status`, when provided, must be an integer 0–9.
+- Returns `404` from `GET /quotes/:id`, `PUT /quotes/:id`, or `DELETE /quotes/:id` when no quote matches.
+
+**Create sets the rest for you:** `POST /quotes` forces `status = 1` (SUBMITTED), stamps `createdAt`/`updatedAt`, defaults `price` to `0`, and leaves the whole quote/pricing half empty. **PUT replaces the whole record** and refreshes `updatedAt`; ownership is decided from the stored owner, never from a `clientId` in the body.
 
 ### Cart validation fields
 

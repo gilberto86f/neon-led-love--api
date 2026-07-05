@@ -53,7 +53,11 @@ export const swaggerSpec = {
       "| Create user, update/delete **any** user | ✅ | ❌ | ❌ |\n" +
       "| List / read **own** orders | ✅ | ✅ | ✅ (own only) |\n" +
       "| Create / update orders | ✅ | ✅ | ❌ |\n" +
-      "| Delete orders | ✅ | ❌ | ❌ |\n\n" +
+      "| Delete orders | ✅ | ❌ | ❌ |\n" +
+      "| Create a quote (`POST /api/quotes`) | ✅ | ✅ | ✅ (guests too) |\n" +
+      "| List / read **own** quotes | ✅ | ✅ | ✅ (own only) |\n" +
+      "| Update **own** quote | ✅ | ✅ | ✅ (own only) |\n" +
+      "| Delete quotes | ✅ | ✅ | ❌ |\n\n" +
       "Notes: super bypasses all checks. Ownership uses the token's user id, never an id from the body. " +
       "Public self-registration always creates a `client`; a client updating its own account cannot change its `role`/`status`.",
   },
@@ -113,6 +117,16 @@ export const swaggerSpec = {
         "Authorization: all order endpoints require authentication. A client may list and read only " +
         "their **own** orders; super/admin see all. Creating and updating orders is super/admin; " +
         "only super may delete an order.",
+    },
+    {
+      name: "Quotes",
+      description:
+        "Custom-neon quote requests. Guests and clients submit the **request** half (contact info + custom-neon " +
+        "configuration); staff later fill in the **quote/pricing** half and move the quote through its lifecycle " +
+        "(`status` is a numeric enum, 0 = DRAFT … 9 = EXPIRED; new requests start at 1 = SUBMITTED).\n\n" +
+        "Authorization: creating a quote is **public** (guests included). Listing and reading require authentication — " +
+        "a client sees only their **own** quotes, super/admin see all. Updating is client-own or staff; " +
+        "deleting is super/admin only.",
     },
     {
       name: "Cart",
@@ -236,6 +250,13 @@ export const swaggerSpec = {
         in: "path",
         required: true,
         description: "Numeric order ID",
+        schema: { type: "integer", minimum: 1 },
+      },
+      quoteId: {
+        name: "id",
+        in: "path",
+        required: true,
+        description: "Numeric quote ID",
         schema: { type: "integer", minimum: 1 },
       },
       productTagProductId: {
@@ -1033,6 +1054,185 @@ export const swaggerSpec = {
           results: {
             type: "array",
             items: { $ref: "#/components/schemas/Order" },
+          },
+          total: { type: "integer", example: 1 },
+          page: { type: "integer", example: 1 },
+          perPage: { type: "integer", example: 20 },
+        },
+      },
+      // ── Quotes ────────────────────────────────────────────────────────────
+      QuoteStatus: {
+        type: "integer",
+        description:
+          "Quote lifecycle (numeric enum): 0 DRAFT, 1 SUBMITTED, 2 UNDER_REVIEW, 3 WAITING_FOR_CUSTOMER, " +
+          "4 QUOTED, 5 ACCEPTED, 6 CONVERTED_TO_ORDER, 7 REJECTED, 8 CANCELLED, 9 EXPIRED.",
+        enum: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        example: 1,
+      },
+      Font: {
+        type: "object",
+        required: ["class", "complexity", "name", "upperDiffersFromLowercase"],
+        properties: {
+          class: { type: "string", example: "font-neon-script" },
+          complexity: { type: "number", example: 1.5 },
+          name: { type: "string", example: "Neon Script" },
+          upperDiffersFromLowercase: { type: "number", example: 1 },
+        },
+      },
+      NeonSize: {
+        type: "object",
+        required: ["width", "maxCharacters"],
+        properties: {
+          width: { type: "number", example: 60 },
+          maxCharacters: { type: "integer", example: 12 },
+          default: { type: "boolean", example: false },
+        },
+      },
+      NeonTextConfig: {
+        type: "object",
+        required: ["text", "color", "font"],
+        properties: {
+          text: { type: "string", example: "Hello" },
+          color: {
+            type: "object",
+            description: "Opaque color object owned by the frontend.",
+            additionalProperties: true,
+          },
+          font: { $ref: "#/components/schemas/Font" },
+          size: { type: "string", example: "medium" },
+          letterSpacing: { type: "number", example: 2 },
+          lineHeight: { type: "number", example: 1.2 },
+          italics: { type: "boolean", example: false },
+          uppercase: { type: "boolean", example: false },
+          horizontalPosition: { type: "number", example: 0 },
+          verticalPosition: { type: "number", example: 0 },
+        },
+      },
+      QuoteRequest: {
+        type: "object",
+        required: ["fullName", "email", "phoneNumber"],
+        description:
+          "Payload a guest or client submits to request a custom-neon quote (`CustomQuoteRequestData`). " +
+          "Only contact info is required; every other field is an optional part of the custom-neon " +
+          "configuration. The server sets `status = 1` (SUBMITTED) and leaves the quote/pricing half empty.",
+        properties: {
+          fullName: { type: "string", example: "Ada Lovelace" },
+          email: { type: "string", format: "email", example: "ada@example.com" },
+          phoneNumber: { type: "string", example: "+52 55 1234 5678" },
+          clientId: {
+            type: "integer",
+            nullable: true,
+            description: "Existing user id, if the requester is logged in. Guests omit it.",
+            example: 1,
+          },
+          isCustom: { type: "boolean", example: true },
+          width: { type: "number", nullable: true, example: 60 },
+          height: { type: "number", nullable: true, example: 20 },
+          sizeUnit: { type: "string", nullable: true, example: "cm" },
+          images: {
+            type: "array",
+            items: { type: "string" },
+            example: ["/uploads/quotes/ref-1.png"],
+          },
+          neonTexts: {
+            type: "array",
+            items: { $ref: "#/components/schemas/NeonTextConfig" },
+          },
+          alignment: { type: "string", nullable: true, example: "center" },
+          size: {
+            allOf: [{ $ref: "#/components/schemas/NeonSize" }],
+            nullable: true,
+          },
+          notes: { type: "string", nullable: true, example: "Wants a warm-white glow." },
+          waterproof: { type: "boolean", nullable: true, example: false },
+          backboardStyle: { type: "string", nullable: true, example: "cut-around" },
+          backboardColor: { type: "string", nullable: true, example: "clear" },
+          wallMountingKit: { type: "string", nullable: true, example: "black" },
+          signMountingKit: { type: "boolean", nullable: true, example: true },
+          remoteControl: { type: "boolean", nullable: true, example: false },
+        },
+      },
+      QuoteInput: {
+        allOf: [
+          { $ref: "#/components/schemas/QuoteRequest" },
+          {
+            type: "object",
+            description:
+              "Full quote payload accepted by PUT — the request half plus the staff-filled quote/pricing " +
+              "half. `status` and every pricing field are optional; omit `status` to keep the current one.",
+            properties: {
+              status: { $ref: "#/components/schemas/QuoteStatus" },
+              price: { type: "number", example: 1299.0 },
+              descriptionQuote: { type: "string", nullable: true },
+              descriptionPrice: { type: "number", nullable: true },
+              descriptionSuggestedPrice: { type: "number", nullable: true },
+              widthQuote: { type: "number", nullable: true },
+              heightQuote: { type: "number", nullable: true },
+              sizePrice: { type: "number", nullable: true },
+              sizeSuggestedPrice: { type: "number", nullable: true },
+              waterproofQuote: { type: "boolean", nullable: true },
+              waterproofPrice: { type: "number", nullable: true },
+              waterproofSuggestedPrice: { type: "number", nullable: true },
+              backboardStyleQuote: { type: "string", nullable: true },
+              backboardStylePrice: { type: "number", nullable: true },
+              backboardStyleSuggestedPrice: { type: "number", nullable: true },
+              backboardColorQuote: { type: "string", nullable: true },
+              backboardColorPrice: { type: "number", nullable: true },
+              backboardColorSuggestedPrice: { type: "number", nullable: true },
+              mockUpQuote: { type: "array", items: { type: "string" } },
+              mockUpPrice: { type: "number", nullable: true },
+              mockUpSuggestedPrice: { type: "number", nullable: true },
+            },
+          },
+        ],
+      },
+      Quote: {
+        allOf: [
+          { $ref: "#/components/schemas/QuoteInput" },
+          {
+            type: "object",
+            properties: {
+              id: { type: "integer", example: 1 },
+              price: { type: "number", example: 0 },
+              status: { $ref: "#/components/schemas/QuoteStatus" },
+              createdAt: { type: "string", format: "date-time" },
+              updatedAt: { type: "string", format: "date-time" },
+            },
+          },
+        ],
+      },
+      QuoteListItem: {
+        type: "object",
+        description: "Compact quote shape returned by the list endpoint.",
+        properties: {
+          id: { type: "integer", example: 1 },
+          status: { $ref: "#/components/schemas/QuoteStatus" },
+          clientId: { type: "integer", nullable: true, example: 1 },
+          fullName: { type: "string", example: "Ada Lovelace" },
+          email: { type: "string", example: "ada@example.com" },
+          phoneNumber: { type: "string", example: "+52 55 1234 5678" },
+          isCustom: { type: "boolean", example: true },
+          price: { type: "number", example: 0 },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      QuoteResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: { $ref: "#/components/schemas/Quote" },
+        },
+      },
+      QuoteListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: {
+            type: "array",
+            items: { $ref: "#/components/schemas/QuoteListItem" },
           },
           total: { type: "integer", example: 1 },
           page: { type: "integer", example: 1 },
@@ -3089,6 +3289,170 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    // ── Quotes ────────────────────────────────────────────────────────────────
+    "/api/quotes": {
+      get: {
+        tags: ["Quotes"],
+        summary: "List quotes",
+        description:
+          "Returns a paginated list of quotes. Requires authentication: a `client` sees only their own " +
+          "quotes; super/admin see all and may narrow the list with `clientId`.\n\n" +
+          "Sorting defaults to `createdAt` descending (newest first). `search` matches `fullName` or " +
+          "`notes` (case-insensitive substring). `status` filters by the numeric quote status.",
+        parameters: [
+          ...paginationParameters,
+          {
+            name: "search",
+            in: "query",
+            description: "Case-insensitive substring match against fullName and notes.",
+            schema: { type: "string" },
+          },
+          {
+            name: "status",
+            in: "query",
+            description: "Filter by numeric quote status (0..9).",
+            schema: { type: "integer", enum: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9] },
+          },
+          {
+            name: "clientId",
+            in: "query",
+            description:
+              "Filter by owning user id. Honored for super/admin; ignored for clients (always scoped to self).",
+            schema: { type: "integer", minimum: 1 },
+          },
+          {
+            name: "sortBy",
+            in: "query",
+            description: "Field to sort by. Defaults to createdAt.",
+            schema: {
+              type: "string",
+              enum: ["price", "status", "createdAt", "updatedAt", "fullName"],
+              default: "createdAt",
+            },
+          },
+          {
+            name: "sortDirection",
+            in: "query",
+            description: "Sort direction. Defaults to desc.",
+            schema: { type: "string", enum: ["asc", "desc"], default: "desc" },
+          },
+        ],
+        responses: {
+          200: {
+            description: "Paginated quote list",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/QuoteListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+        },
+      },
+      post: {
+        tags: ["Quotes"],
+        summary: "Create quote request",
+        description:
+          "Public — a guest or client submits a custom-neon quote request. All fields from " +
+          "`CustomQuoteRequestData` are stored; the server sets `status = 1` (SUBMITTED) and leaves " +
+          "the quote/pricing half empty. If `clientId` is supplied it must reference an existing user.",
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/QuoteRequest" },
+            },
+          },
+        },
+        responses: {
+          201: {
+            description: "Quote created",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/QuoteResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+        },
+      },
+    },
+    "/api/quotes/{id}": {
+      get: {
+        tags: ["Quotes"],
+        summary: "Get quote by ID",
+        description:
+          "Returns a full quote. Requires authentication; a client may read only their own quote " +
+          "(others return `403`). Guest-submitted quotes have no owner and are staff-only.",
+        parameters: [{ $ref: "#/components/parameters/quoteId" }],
+        responses: {
+          200: {
+            description: "Quote found",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/QuoteResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+        },
+      },
+      put: {
+        tags: ["Quotes"],
+        summary: "Update quote",
+        description:
+          "Replaces the quote with the provided full `Quote` object and refreshes `updatedAt`. " +
+          "Requires authentication; a client may update only their own quote, super/admin any. " +
+          "Omit `status` to keep the current status.",
+        parameters: [{ $ref: "#/components/parameters/quoteId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/QuoteInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Quote updated",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/QuoteResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+        },
+      },
+      delete: {
+        tags: ["Quotes"],
+        summary: "Delete quote",
+        description: "Deletes a quote. Super/admin only.",
+        parameters: [{ $ref: "#/components/parameters/quoteId" }],
+        responses: {
+          200: {
+            description: "Quote deleted",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/DeletedResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
         },
       },
