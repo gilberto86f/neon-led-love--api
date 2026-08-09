@@ -92,7 +92,11 @@ const normalize = (input: UserInput) => ({
   isGuest: input.isGuest ?? false,
 });
 
-const PUBLIC_USER_SELECT = {
+// Every user-shaped payload the API returns goes through this projection.
+// Sensitive columns (passwordHash, verificationToken, refreshTokenHash) are
+// never selected. Exported so related resources — e.g. the `user` joined onto
+// an order — expose exactly the same safe fields.
+export const PUBLIC_USER_SELECT = {
   id: true,
   fullName: true,
   email: true,

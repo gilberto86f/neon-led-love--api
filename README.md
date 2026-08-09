@@ -265,9 +265,10 @@ Authorization: Bearer <accessToken>
 | List users / read **any** user                                   |  ✅   |  ✅   | ❌                  |
 | Read / update / delete **own** account                           |  ✅   |  ✅   | ✅ (own only)       |
 | Create a user, update/delete **any other** user                  |  ✅   |  ❌   | ❌                  |
-| List / read orders                                               |  ✅   |  ✅   | ✅ (own orders only) |
-| Create / update orders                                           |  ✅   |  ✅   | ❌                  |
-| Delete an order                                                  |  ✅   |  ❌   | ❌                  |
+| List / read orders + their status history                        |  ✅   |  ✅   | ✅ (own orders only) |
+| Create an order, edit its tracking / notes / address             |  ✅   |  ✅   | ❌                  |
+| Change an order's status                                         |  ✅   |  ✅   | ❌                  |
+| Delete an order (only if it never took money)                    |  ✅   |  ❌   | ❌                  |
 | Create a quote (`POST /api/quotes`)                              |  ✅   |  ✅   | ✅ (guests too)     |
 | List / read quotes                                               |  ✅   |  ✅   | ✅ (own quotes only) |
 | Update a quote                                                   |  ✅   |  ✅   | ❌                  |
@@ -514,24 +515,120 @@ Example: `GET /api/users?role=client&status=1&isGuest=false&search=ada&page=1&pe
 
 A purchase made by a user. Each order owns its `items[]` — those items store a **snapshot** of product data (name, slug, image, unit price) at the time of purchase, so order history stays accurate even if a product is later renamed, repriced, or deleted.
 
-| Method | Path           | Body (JSON)            | What it does               |
-| ------ | -------------- | ---------------------- | -------------------------- |
-| GET    | `/orders`      | —                      | List orders (paginated)    |
-| GET    | `/orders/:id`  | —                      | Get one order by ID        |
-| POST   | `/orders`      | [Order](#order-fields) | Create a new order         |
-| PUT    | `/orders/:id`  | [Order](#order-fields) | Replace an order           |
-| DELETE | `/orders/:id`  | —                      | Delete an order            |
+An order is **not** a generic editable record. Its amounts, items and payment reference are historical facts, and its `status` moves through a controlled lifecycle that is written down as it happens. The endpoints reflect that:
 
-> **Access:** every order endpoint requires a token. A `client` may list and read only **their own** orders (`GET /orders` is automatically filtered to them; reading someone else's order returns `403`). `super`/`admin` see all orders. Creating and updating orders is `super`/`admin`; **only `super` may delete** an order.
+| Method | Path                         | Body (JSON)                              | What it does                              |
+| ------ | ---------------------------- | ---------------------------------------- | ----------------------------------------- |
+| GET    | `/orders`                    | —                                        | List orders (paginated, no history)       |
+| GET    | `/orders/:id`                | —                                        | Get one order, with its full history      |
+| GET    | `/orders/:id/status-history` | —                                        | Just the audit trail of that order        |
+| POST   | `/orders`                    | [OrderInput](#order-fields)              | Create a new order (always PENDING_PAYMENT) |
+| PUT    | `/orders/:id`                | [OrderUpdateInput](#order-fields)        | Edit tracking number, notes, address      |
+| PATCH  | `/orders/:id/status`         | `{ status, comment? }`                   | Move the order to a new status            |
+| DELETE | `/orders/:id`                | —                                        | Delete an order that never took money     |
+
+> **Access:** every order endpoint requires a token. A `client` may list and read only **their own** orders and their status history (`GET /orders` is automatically filtered to them; reading someone else's order returns `403`). `super`/`admin` see all orders. Creating an order, editing it and changing its status is `super`/`admin`; **only `super` may delete** an order. A customer can never change a status, write history, touch payment data or amounts, or delete anything.
+
+**Order status**
+
+Every order carries a `status` — a **number**, not a string (it used to be a string; see *Migrating from the old string statuses* at the end of this section):
+
+| #  | Status               | Meaning                                                       |
+| -- | -------------------- | ------------------------------------------------------------- |
+| 0  | `PENDING_PAYMENT`    | Created, waiting to be paid. **New orders start here.**        |
+| 1  | `PAID`               | Payment confirmed.                                            |
+| 2  | `PAYMENT_FAILED`     | The charge did not go through.                                |
+| 3  | `PENDING_PRODUCTION` | Paid, queued for the workshop.                                |
+| 4  | `IN_PRODUCTION`      | The sign is being made.                                       |
+| 5  | `QUALITY_CHECK`      | Made, being inspected.                                        |
+| 6  | `READY_TO_SHIP`      | Packed and waiting for the carrier.                           |
+| 7  | `SHIPPED`            | Handed to the carrier.                                        |
+| 8  | `DELIVERED`          | Received by the customer.                                     |
+| 9  | `CANCELLED`          | Called off before it shipped. Final.                          |
+| 10 | `REFUNDED`           | Money returned to the customer. Final.                        |
+
+Alongside `status`, each order keeps an `orderStatusHistory` — one entry per transition, written by the server. `status` is the *current state* (so listing and filtering never has to read the history); `orderStatusHistory` is the *audit trail*. *How status and history stay in sync*, below, explains how the two are kept from drifting apart.
+
+**Allowed transitions.** The normal path is `0 → 1 → 3 → 4 → 5 → 6 → 7 → 8`. Anything else returns `409`:
+
+| From                   | May move to                                              |
+| ---------------------- | -------------------------------------------------------- |
+| 0 `PENDING_PAYMENT`    | 1 `PAID`, 2 `PAYMENT_FAILED`, 9 `CANCELLED`               |
+| 1 `PAID`               | 3 `PENDING_PRODUCTION`, 9 `CANCELLED`, 10 `REFUNDED`      |
+| 2 `PAYMENT_FAILED`     | 0 `PENDING_PAYMENT` (retry), 9 `CANCELLED`                |
+| 3 `PENDING_PRODUCTION` | 4 `IN_PRODUCTION`, 9 `CANCELLED`, 10 `REFUNDED`           |
+| 4 `IN_PRODUCTION`      | 5 `QUALITY_CHECK`, 9 `CANCELLED`, 10 `REFUNDED`           |
+| 5 `QUALITY_CHECK`      | 6 `READY_TO_SHIP`, 4 `IN_PRODUCTION` (rework), 9, 10      |
+| 6 `READY_TO_SHIP`      | 7 `SHIPPED`, 9 `CANCELLED`, 10 `REFUNDED`                 |
+| 7 `SHIPPED`            | 8 `DELIVERED`, 10 `REFUNDED` — too late to cancel         |
+| 8 `DELIVERED`          | 10 `REFUNDED`                                             |
+| 9 `CANCELLED`          | — final                                                   |
+| 10 `REFUNDED`          | — final                                                   |
+
+The rules of thumb: **cancellation** is only possible while the sign is still with you (anything before `SHIPPED`), and a **refund** only makes sense once the customer actually paid (so never from `PENDING_PAYMENT` or `PAYMENT_FAILED`). The whole table lives in one constant — `ORDER_STATUS_TRANSITIONS` in [src/services/order.service.ts](src/services/order.service.ts) — so there is exactly one place to change if the business rules change.
+
+**Changing the status**
+
+```http
+PATCH /api/orders/12/status
+Authorization: Bearer <super or admin token>
+
+{ "status": 4, "comment": "Production has started." }
+```
+
+Returns the updated order, history included. Notes:
+
+- Who made the change is taken from your **token** — there is no `changedByUser` field to send.
+- Sending the status the order already has is a no-op: `200`, and no duplicate history entry is written.
+- A `status` outside `0..10` returns `400`; a status the order isn't allowed to move to returns `409` with a message listing what *is* allowed from where it stands.
+
+**Reading the history**
+
+`GET /api/orders/:id` includes `orderStatusHistory` (oldest → newest). `GET /api/orders` deliberately does **not** — a page of 100 orders would otherwise drag in every transition ever recorded. When you only need the trail (a timeline widget, or a refresh after a transition), use `GET /api/orders/:id/status-history`, which returns it as a standard list response.
+
+**Listing**
 
 The list endpoint supports the standard `page` / `perPage` pagination plus two optional filters:
 
 - `search` — matches an exact order ID (when the value is numeric), tracking number, payment ID, or the owning user's full name, email, or phone number (case-insensitive substring).
-- `status` — one of `pending`, `paid`, `processing`, `shipped`, `delivered`, `cancelled`, `refunded`. Omit to return all statuses.
+- `status` — a number, `0`–`10`. Omit to return all statuses.
 
-Example: `GET /api/orders?status=processing&search=lovelace&page=1&perPage=20`
+Example: `GET /api/orders?status=4&search=lovelace&page=1&perPage=20`
 
-Deleting an order also deletes its items (cascade). Deleting a user who has orders returns `400` with a message like `Cannot delete user 5: user has 3 orders. Delete them first.` — remove the user's orders first.
+**Deleting**
+
+Orders are financial records, so `DELETE /api/orders/:id` is deliberately narrow. It is `super`-only, and it refuses any order whose **history** shows it ever reached `PAID` or beyond — including an order that was paid and later cancelled:
+
+```json
+{
+  "success": 0,
+  "status": 409,
+  "error": "Order 12 cannot be deleted: it reached PAID (1) and is a financial record. Cancel or refund it via PATCH /api/orders/12/status instead."
+}
+```
+
+An order that only ever sat in `PENDING_PAYMENT`, `PAYMENT_FAILED` or `CANCELLED` (an abandoned checkout, a test order) can still be deleted; its items and status history go with it (cascade). For everything else, cancel or refund it — the record stays, and the reason is on the trail.
+
+Deleting a user who has orders returns `400` with a message like `Cannot delete user 5: user has 3 orders. Delete them first.` — since paid orders can't be deleted, a customer with real purchase history can't be removed. That's intentional.
+
+**How status and history stay in sync**
+
+`Order.status` and `OrderStatusHistory` are written **together, in a database transaction, in exactly one function** — `applyStatusChange` in [src/services/order.service.ts](src/services/order.service.ts). Every path that changes a status (the `PATCH` endpoint, order creation, the future Stripe webhook) goes through it. The database can therefore never hold `status = PAID` with no matching history entry, because both writes commit or neither does.
+
+Two more guarantees come out of that single funnel:
+
+- The transition is validated against `ORDER_STATUS_TRANSITIONS` before anything is written.
+- The update is conditional on the status that was read (`WHERE id = ? AND status = ?`). If two staff members change the same order at the same moment, the second one matches zero rows and gets a `409` telling them to retry, instead of silently overwriting the first.
+
+Order creation follows the same rule: the order row and its opening history entry are created in one transaction, so an order never exists without history.
+
+**Payments**
+
+Stripe is **not integrated yet**. When it is, the payment-driven transitions (`PENDING_PAYMENT → PAID` and `PENDING_PAYMENT → PAYMENT_FAILED`) should come from a verified Stripe webhook, which records `changedByUser: "Stripe Webhook"`. The seam is already there — `orderService.recordPaymentStatusChange(...)` — but no route is exposed, on purpose: **the frontend is never the authority on whether a payment succeeded.** A browser saying "payment worked" is a claim; only the payment provider's signed webhook is proof.
+
+**Migrating from the old string statuses**
+
+Orders used to have a string `status` (`"pending"`, `"paid"`, `"processing"`, …). The migration [20260807120000_add_order_status_history](prisma/migrations/20260807120000_add_order_status_history/migration.sql) converts the column in place — existing orders keep their state, mapped as `pending → 0`, `paid → 1`, `processing → 3` (PENDING_PRODUCTION), `shipped → 7`, `delivered → 8`, `cancelled → 9`, `refunded → 10` — and backfills one opening history entry per existing order so the invariant above holds for old rows too. If you have a frontend sending or reading the old strings, that is the breaking change to look for.
 
 **Quotes**
 
@@ -1031,14 +1128,17 @@ User responses also include a read-only `isVerified` boolean indicating whether 
 ### Order fields
 
 ```ts
-type OrderStatus =
-  | "pending" | "paid" | "processing" | "shipped"
-  | "delivered" | "cancelled" | "refunded";
+enum OrderStatus {
+  PENDING_PAYMENT = 0, PAID = 1, PAYMENT_FAILED = 2,
+  PENDING_PRODUCTION = 3, IN_PRODUCTION = 4, QUALITY_CHECK = 5,
+  READY_TO_SHIP = 6, SHIPPED = 7, DELIVERED = 8,
+  CANCELLED = 9, REFUNDED = 10,
+}
 
-// What you send for POST /orders and PUT /orders/:id
+// What you send for POST /orders
+// Note: no `status` and no `orderStatusHistory` — the server owns both.
 type OrderInput = {
   userId: number;            // required — must reference an existing user
-  status?: OrderStatus;      // optional — defaults to "pending"
   currency: string;          // required — e.g. "MXN", "USD"
   subtotalAmount: number;    // required — ≥ 0
   shippingAmount: number;    // required — ≥ 0
@@ -1049,6 +1149,31 @@ type OrderInput = {
   paymentId?: string;        // optional
   trackingNumber?: string;   // optional
   notes?: string;            // optional
+};
+
+// What you send for PUT /orders/:id — that's the whole list.
+// Omit a field to leave it alone; send null to clear it.
+type OrderUpdateInput = {
+  shippingAddress?: ShippingAddress | null; // frozen from READY_TO_SHIP on
+  trackingNumber?: string | null;
+  notes?: string | null;
+};
+
+// What you send for PATCH /orders/:id/status
+type OrderStatusChangeInput = {
+  status: OrderStatus;       // required — must be a legal transition
+  comment?: string;          // optional — stored on the history entry
+};
+
+// What comes back on a history entry (read-only, server-written)
+type StatusHistory = {
+  id: number;
+  typeId: number;                    // the order id
+  previousStatus: OrderStatus | null; // null on the first entry
+  newStatus: OrderStatus;
+  changedByUser: number | "system" | "Stripe Webhook";
+  comment: string | null;
+  createdAt: string;
 };
 
 type OrderItemInput = {
@@ -1077,7 +1202,6 @@ type ShippingAddress = {
 | Field             | Type                        | Required | Notes                                                          |
 | ----------------- | --------------------------- | -------- | -------------------------------------------------------------- |
 | `userId`          | number                      | yes      | Must reference an existing user. Returns `400` if not found.   |
-| `status`          | enum                        | no       | Defaults to `"pending"`. One of the seven `OrderStatus` values.|
 | `currency`        | string                      | yes      | Trimmed before saving. E.g. `"MXN"`, `"USD"`.                  |
 | `subtotalAmount`  | number                      | yes      | Non-negative.                                                  |
 | `shippingAmount`  | number                      | yes      | Non-negative.                                                  |
@@ -1106,13 +1230,35 @@ Validation rules:
 - `userId`, `currency`, the four amount fields, and `items[]` are all required — `400` if missing or invalid.
 - `totalAmount` must equal `subtotalAmount + shippingAmount + taxAmount` (within a 0.01 tolerance for floating-point rounding).
 - Each item's `totalAmount` must equal `unitPrice * quantity` (same tolerance).
-- `status`, when provided, must be one of the seven allowed values.
+- `status` or `orderStatusHistory` in a `POST` body is rejected with `400` — the server sets the first and writes the second.
 - `shippingAddress`, when provided, must include every field as a non-empty string.
-- Returns `404` from `GET /orders/:id`, `PUT /orders/:id`, or `DELETE /orders/:id` when no order matches.
+- Returns `404` from any `/orders/:id` route when no order matches.
+
+**What a read returns.** On top of everything you sent, `GET /orders` and `GET /orders/:id` add `id`, `createdAt`, `updatedAt`, the current `status`, and `user` — the client who placed the order, joined for you (sensitive fields like `passwordHash` are never included). `GET /orders/:id` also adds `orderStatusHistory`; the list does not.
 
 **Why items are snapshots:** if a product is renamed or repriced after an order ships, the order should still show the data the customer actually saw and paid for. `productId` is stored as a reference but is **not** a foreign key — the product can be deleted without breaking historical orders.
 
-**PUT replaces everything, including items:** updating an order deletes all existing items and recreates them from the request body, inside a single transaction. If you only need to change the status or tracking number, you still need to send the full order payload.
+**What `PUT` can and cannot change.** `PUT /orders/:id` is no longer a full replace. It accepts only `shippingAddress`, `trackingNumber` and `notes`, and it *merges* — fields you leave out keep their current value. Everything else is refused with a `400` that names the offending fields:
+
+```json
+{
+  "success": 0,
+  "status": 400,
+  "error": "These fields cannot be changed after an order is created: userId, totalAmount, items. Editable fields are: shippingAddress, trackingNumber, notes. Use PATCH /api/orders/{id}/status to change the status."
+}
+```
+
+That is deliberate: if you send a whole order object the way the old API expected, you get a loud error instead of quietly having your amounts ignored. The reasoning behind each field:
+
+| Field                                                                   | Why it's locked                                                                 |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `userId`                                                                 | Reassigning a purchase to a different customer isn't an edit, it's a rewrite.   |
+| `currency`, `subtotalAmount`, `shippingAmount`, `taxAmount`, `totalAmount` | What the customer was charged. Changing it after the fact breaks your books.     |
+| `items`                                                                  | The snapshot of what was actually bought.                                       |
+| `paymentId`                                                              | Set by the payment provider, not by a person.                                   |
+| `status`                                                                 | Has its own endpoint so every change leaves an audit entry.                     |
+| `shippingAddress`                                                        | Editable — a customer can correct it — but only until `READY_TO_SHIP`, after which the parcel is already labelled and you get a `409`. |
+| `trackingNumber`, `notes`                                                | Genuinely operational. Edit freely.                                             |
 
 ### Quote fields
 

@@ -132,11 +132,17 @@ model User {
   quotes                  Quote[]
 }
 
+// A purchase made by a user. `status` is the numeric OrderStatus enum
+// (0 = PENDING_PAYMENT … 10 = REFUNDED) and acts as the *current-state
+// projection*: it exists so listing and filtering orders never has to load the
+// audit trail. `statusHistory` is the source of truth for how the order got
+// there. The two are only ever written together, inside a transaction — see
+// `applyStatusChange` in src/services/order.service.ts.
 model Order {
-  id              Int         @id @default(autoincrement())
+  id              Int                  @id @default(autoincrement())
   userId          Int
-  user            User        @relation(fields: [userId], references: [id], onDelete: Restrict)
-  status          String      @default("pending")
+  user            User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  status          Int                  @default(0)
   currency        String
   subtotalAmount  Float
   shippingAmount  Float
@@ -146,9 +152,29 @@ model Order {
   paymentId       String?
   trackingNumber  String?
   notes           String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
   items           OrderItem[]
+  statusHistory   OrderStatusHistory[]
+}
+
+// Immutable audit trail of order status transitions. One row per change,
+// including the order's creation (`previousStatus = null`). Rows are never
+// updated or deleted by the application; they disappear only with the order.
+// `changedByUser` holds the acting user's id as text, or one of the
+// non-user actors "system" / "Stripe Webhook".
+model OrderStatusHistory {
+  id             Int      @id @default(autoincrement())
+  orderId        Int
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  previousStatus Int?
+  newStatus      Int
+  changedByUser  String
+  comment        String?
+  createdAt      DateTime @default(now())
+
+  @@index([orderId, createdAt])
+  @@index([createdAt])
 }
 
 model OrderItem {

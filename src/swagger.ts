@@ -51,9 +51,10 @@ export const swaggerSpec = {
       "| Read any user / list users | ✅ | ✅ | ❌ |\n" +
       "| Read / update / delete **own** user | ✅ | ✅ | ✅ |\n" +
       "| Create user, update/delete **any** user | ✅ | ❌ | ❌ |\n" +
-      "| List / read **own** orders | ✅ | ✅ | ✅ (own only) |\n" +
-      "| Create / update orders | ✅ | ✅ | ❌ |\n" +
-      "| Delete orders | ✅ | ❌ | ❌ |\n" +
+      "| List / read **own** orders + status history | ✅ | ✅ | ✅ (own only) |\n" +
+      "| Create orders / edit tracking, notes, address | ✅ | ✅ | ❌ |\n" +
+      "| Change order status (`PATCH /api/orders/{id}/status`) | ✅ | ✅ | ❌ |\n" +
+      "| Delete an order (never-paid orders only) | ✅ | ❌ | ❌ |\n" +
       "| Create a quote (`POST /api/quotes`) | ✅ | ✅ | ✅ (guests too) |\n" +
       "| List / read **own** quotes | ✅ | ✅ | ✅ (own only) |\n" +
       "| Update quotes | ✅ | ✅ | ❌ |\n" +
@@ -114,9 +115,17 @@ export const swaggerSpec = {
       name: "Orders",
       description:
         "Customer orders. Each order owns its `items[]` and stores a snapshot of product data (name, slug, image, price) at purchase time so historical records survive product changes.\n\n" +
+        "**Status model.** `status` is the numeric OrderStatus enum and holds the *current* state; " +
+        "`orderStatusHistory` is the immutable audit trail of every transition. The client never writes " +
+        "either one: a new order always starts at `0` (PENDING_PAYMENT) and moves only through " +
+        "`PATCH /api/orders/{id}/status`, which validates the transition and appends a history entry in " +
+        "the same database transaction. Sending `status` or `orderStatusHistory` to POST or PUT returns `400`.\n\n" +
+        "List responses carry `status` but **not** the history; the detail endpoint returns both, and " +
+        "`GET /api/orders/{id}/status-history` returns the trail on its own.\n\n" +
         "Authorization: all order endpoints require authentication. A client may list and read only " +
-        "their **own** orders; super/admin see all. Creating and updating orders is super/admin; " +
-        "only super may delete an order.",
+        "their **own** orders (including their status history); super/admin see all. Creating an order, " +
+        "editing its tracking/notes/address and changing its status is super/admin. Only super may " +
+        "delete — and only an order that never reached PAID; everything else is cancelled or refunded.",
     },
     {
       name: "Quotes",
@@ -951,6 +960,60 @@ export const swaggerSpec = {
           },
         ],
       },
+      OrderStatus: {
+        type: "integer",
+        description:
+          "Order lifecycle (numeric enum): 0 PENDING_PAYMENT, 1 PAID, 2 PAYMENT_FAILED, " +
+          "3 PENDING_PRODUCTION, 4 IN_PRODUCTION, 5 QUALITY_CHECK, 6 READY_TO_SHIP, 7 SHIPPED, " +
+          "8 DELIVERED, 9 CANCELLED, 10 REFUNDED.\n\n" +
+          "Allowed transitions (everything else returns `409`):\n" +
+          "- 0 PENDING_PAYMENT → 1, 2, 9\n" +
+          "- 1 PAID → 3, 9, 10\n" +
+          "- 2 PAYMENT_FAILED → 0 (retry), 9\n" +
+          "- 3 PENDING_PRODUCTION → 4, 9, 10\n" +
+          "- 4 IN_PRODUCTION → 5, 9, 10\n" +
+          "- 5 QUALITY_CHECK → 6, 4 (rework), 9, 10\n" +
+          "- 6 READY_TO_SHIP → 7, 9, 10\n" +
+          "- 7 SHIPPED → 8, 10 (no longer cancellable)\n" +
+          "- 8 DELIVERED → 10\n" +
+          "- 9 CANCELLED, 10 REFUNDED → final, nothing follows",
+        enum: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        example: 0,
+      },
+      OrderStatusHistory: {
+        type: "object",
+        description:
+          "One recorded status transition. Written by the server only — there is no endpoint that " +
+          "creates, edits or deletes these entries directly.",
+        properties: {
+          id: { type: "integer", example: 12 },
+          typeId: {
+            type: "integer",
+            description: "The order this entry belongs to.",
+            example: 1,
+          },
+          previousStatus: {
+            allOf: [{ $ref: "#/components/schemas/OrderStatus" }],
+            nullable: true,
+            description:
+              "The status the order came from. `null` on the first entry — the order started there rather than moving from somewhere.",
+          },
+          newStatus: { $ref: "#/components/schemas/OrderStatus" },
+          changedByUser: {
+            oneOf: [{ type: "integer" }, { type: "string" }],
+            description:
+              "Who made the change: the numeric id of the acting user, `\"system\"` (order creation " +
+              "and other application-driven changes), or `\"Stripe Webhook\"` (a verified payment event).",
+            example: 7,
+          },
+          comment: {
+            type: "string",
+            nullable: true,
+            example: "Production has started.",
+          },
+          createdAt: { type: "string", format: "date-time" },
+        },
+      },
       OrderInput: {
         type: "object",
         required: [
@@ -963,24 +1026,12 @@ export const swaggerSpec = {
           "items",
         ],
         description:
-          "Payload for creating or replacing an order. `totalAmount` must equal `subtotalAmount + shippingAmount + taxAmount`. " +
-          "`items` must contain at least one line. PUT **replaces** all fields including the full items array.",
+          "Payload for creating an order. `totalAmount` must equal `subtotalAmount + shippingAmount + taxAmount`. " +
+          "`items` must contain at least one line.\n\n" +
+          "`status` and `orderStatusHistory` are **not** accepted: the server always starts the order at " +
+          "`0` (PENDING_PAYMENT) and writes the opening history entry itself. Sending either field returns `400`.",
         properties: {
           userId: { type: "integer", example: 1 },
-          status: {
-            type: "string",
-            enum: [
-              "pending",
-              "paid",
-              "processing",
-              "shipped",
-              "delivered",
-              "cancelled",
-              "refunded",
-            ],
-            default: "pending",
-            example: "pending",
-          },
           currency: { type: "string", example: "MXN" },
           subtotalAmount: { type: "number", example: 99.98 },
           shippingAmount: { type: "number", example: 10.0 },
@@ -1000,23 +1051,59 @@ export const swaggerSpec = {
           notes: { type: "string", nullable: true, example: "Leave at the front desk." },
         },
       },
+      OrderUpdateInput: {
+        type: "object",
+        description:
+          "Payload for `PUT /api/orders/{id}`. Only these three fields stay editable once an order " +
+          "exists; every field you omit is left untouched. Sending `userId`, `currency`, any amount, " +
+          "`items`, `paymentId`, `status` or `orderStatusHistory` returns `400` — those are historical " +
+          "record, and the status moves only through `PATCH /api/orders/{id}/status`.",
+        properties: {
+          shippingAddress: {
+            allOf: [{ $ref: "#/components/schemas/ShippingAddress" }],
+            nullable: true,
+            description:
+              "Editable until the order reaches `6` (READY_TO_SHIP); after that it returns `409`.",
+          },
+          trackingNumber: { type: "string", nullable: true, example: "1Z999AA10123456784" },
+          notes: { type: "string", nullable: true, example: "Leave at the front desk." },
+        },
+      },
+      OrderStatusChangeInput: {
+        type: "object",
+        required: ["status"],
+        description:
+          "Payload for `PATCH /api/orders/{id}/status`. The server records who made the change from " +
+          "the access token — there is no `changedByUser` field to send.",
+        properties: {
+          status: { $ref: "#/components/schemas/OrderStatus" },
+          comment: {
+            type: "string",
+            nullable: true,
+            description: "Optional note stored on the history entry.",
+            example: "Production has started.",
+          },
+        },
+      },
       Order: {
         type: "object",
         properties: {
           id: { type: "integer", example: 1 },
           userId: { type: "integer", example: 1 },
-          status: {
-            type: "string",
-            enum: [
-              "pending",
-              "paid",
-              "processing",
-              "shipped",
-              "delivered",
-              "cancelled",
-              "refunded",
-            ],
-            example: "pending",
+          user: {
+            allOf: [{ $ref: "#/components/schemas/User" }],
+            description:
+              "The client who placed the order, joined by the list and detail endpoints. Sensitive fields are never included.",
+          },
+          status: { $ref: "#/components/schemas/OrderStatus" },
+          orderStatusHistory: {
+            type: "array",
+            description:
+              "Full audit trail, oldest → newest. Returned by `GET /api/orders/{id}`, " +
+              "`PUT /api/orders/{id}` and `PATCH /api/orders/{id}/status`. **Omitted from the list " +
+              "endpoint** so a page of orders stays cheap — use `GET /api/orders/{id}/status-history` " +
+              "if you need it on its own.",
+            items: { $ref: "#/components/schemas/OrderStatusHistory" },
           },
           currency: { type: "string", example: "MXN" },
           subtotalAmount: { type: "number", example: 99.98 },
@@ -1053,11 +1140,24 @@ export const swaggerSpec = {
           status: { type: "integer", example: 200 },
           results: {
             type: "array",
+            description: "Orders **without** `orderStatusHistory` — each row carries only its current `status`.",
             items: { $ref: "#/components/schemas/Order" },
           },
           total: { type: "integer", example: 1 },
           page: { type: "integer", example: 1 },
           perPage: { type: "integer", example: 20 },
+        },
+      },
+      OrderStatusHistoryListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: {
+            type: "array",
+            items: { $ref: "#/components/schemas/OrderStatusHistory" },
+          },
+          total: { type: "integer", example: 3 },
         },
       },
       // ── Quotes ────────────────────────────────────────────────────────────
@@ -3163,9 +3263,12 @@ export const swaggerSpec = {
         summary: "List orders",
         description:
           "Returns a paginated list of orders ordered by ID (newest first).\n\n" +
+          "Each row carries its current `status` and the joined `user`, but **not** " +
+          "`orderStatusHistory` — the list stays cheap no matter how many transitions an order has been " +
+          "through. Load the history from `GET /api/orders/{id}` or `GET /api/orders/{id}/status-history`.\n\n" +
           "Pass `search` to filter by order ID (exact numeric match), tracking number, payment ID, " +
           "or the related user's full name, email, or phone number (case-insensitive substring).\n\n" +
-          "Pass `status` to filter by order status. Omit to return all statuses.",
+          "Pass `status` to filter by numeric order status. Omit to return all statuses.",
         parameters: [
           ...paginationParameters,
           {
@@ -3178,19 +3281,8 @@ export const swaggerSpec = {
           {
             name: "status",
             in: "query",
-            description: "Filter by order status.",
-            schema: {
-              type: "string",
-              enum: [
-                "pending",
-                "paid",
-                "processing",
-                "shipped",
-                "delivered",
-                "cancelled",
-                "refunded",
-              ],
-            },
+            description: "Filter by numeric order status (0..10).",
+            schema: { type: "integer", enum: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] },
           },
         ],
         responses: {
@@ -3211,7 +3303,11 @@ export const swaggerSpec = {
         description:
           "Creates a new order. The `userId` must reference an existing user. " +
           "`items[]` must contain at least one line and each line's `totalAmount` must equal `unitPrice * quantity`. " +
-          "Order `totalAmount` must equal `subtotalAmount + shippingAmount + taxAmount`.",
+          "Order `totalAmount` must equal `subtotalAmount + shippingAmount + taxAmount`.\n\n" +
+          "The order is created at `status = 0` (PENDING_PAYMENT) together with its opening " +
+          "`orderStatusHistory` entry (`previousStatus: null`, `changedByUser: \"system\"`) in a single " +
+          "transaction — an order can never exist without its history. `status` and `orderStatusHistory` " +
+          "in the request body are rejected with `400`.",
         requestBody: {
           required: true,
           content: {
@@ -3237,6 +3333,9 @@ export const swaggerSpec = {
       get: {
         tags: ["Orders"],
         summary: "Get order by ID",
+        description:
+          "Returns the full order: `items[]`, the joined `user`, the current `status`, and the complete " +
+          "`orderStatusHistory` sorted oldest → newest.",
         parameters: [{ $ref: "#/components/parameters/orderId" }],
         responses: {
           200: {
@@ -3248,22 +3347,27 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
+          403: errorResponse,
           404: errorResponse,
         },
       },
       put: {
         tags: ["Orders"],
-        summary: "Update order",
+        summary: "Update the editable fields of an order",
         description:
-          "Replaces all fields of an existing order, including the full `items[]` array. " +
-          "Existing items are deleted and the provided ones are created in a single transaction. " +
-          "The same amount-consistency rules as create apply.",
+          "Updates only `shippingAddress`, `trackingNumber` and `notes`. Fields you omit keep their " +
+          "current value; send `null` to clear one.\n\n" +
+          "Everything else about an order is fixed at creation time. `userId`, `currency`, the four " +
+          "amounts, `items`, and `paymentId` are historical record; `status` and `orderStatusHistory` " +
+          "move only through `PATCH /api/orders/{id}/status`. Sending any of them returns `400` (rather " +
+          "than silently ignoring them), so a caller still posting the whole order finds out immediately.\n\n" +
+          "`shippingAddress` is frozen once the order reaches `6` (READY_TO_SHIP) — changing it then returns `409`.",
         parameters: [{ $ref: "#/components/parameters/orderId" }],
         requestBody: {
           required: true,
           content: {
             "application/json": {
-              schema: { $ref: "#/components/schemas/OrderInput" },
+              schema: { $ref: "#/components/schemas/OrderUpdateInput" },
             },
           },
         },
@@ -3278,12 +3382,19 @@ export const swaggerSpec = {
           },
           400: errorResponse,
           404: errorResponse,
+          409: errorResponse,
         },
       },
       delete: {
         tags: ["Orders"],
-        summary: "Delete order",
-        description: "Deletes an order and all of its items (cascade).",
+        summary: "Delete an order that never took money",
+        description:
+          "Orders are financial records, so this is deliberately narrow: super-only, and it refuses any " +
+          "order whose **history** shows it ever reached `1` (PAID) or beyond — including one that was " +
+          "paid and later cancelled. Those return `409`; cancel or refund them through " +
+          "`PATCH /api/orders/{id}/status` instead.\n\n" +
+          "An order that only ever sat in PENDING_PAYMENT / PAYMENT_FAILED / CANCELLED is deleted along " +
+          "with its items and its status history (cascade).",
         parameters: [{ $ref: "#/components/parameters/orderId" }],
         responses: {
           200: {
@@ -3295,6 +3406,76 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    "/api/orders/{id}/status": {
+      patch: {
+        tags: ["Orders"],
+        summary: "Change order status",
+        description:
+          "The only way `Order.status` ever changes. In one database transaction the server validates " +
+          "the transition, updates `status`, and appends an `orderStatusHistory` entry recording " +
+          "`previousStatus`, `newStatus`, who changed it and the optional `comment`. The two can never " +
+          "drift apart.\n\n" +
+          "`changedByUser` is taken from the access token, never from the body. Rules:\n" +
+          "- an illegal transition (e.g. DELIVERED → PENDING_PAYMENT, or anything out of CANCELLED/REFUNDED) returns `409`\n" +
+          "- a `status` outside 0..10 returns `400`\n" +
+          "- re-sending the status the order already has is a no-op: `200`, and **no** duplicate history entry\n\n" +
+          "Payment-driven changes (PENDING_PAYMENT → PAID / PAYMENT_FAILED) are meant to come from a " +
+          "verified Stripe webhook, which records `changedByUser: \"Stripe Webhook\"`. Stripe is not " +
+          "integrated yet — the service method exists but no route is exposed, because the frontend must " +
+          "never be the authority on a successful payment.\n\n" +
+          "Returns the updated order including its full history.",
+        parameters: [{ $ref: "#/components/parameters/orderId" }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/OrderStatusChangeInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description: "Status changed (or already at the requested status)",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OrderResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+          409: errorResponse,
+        },
+      },
+    },
+    "/api/orders/{id}/status-history": {
+      get: {
+        tags: ["Orders"],
+        summary: "Get the status history of an order",
+        description:
+          "Returns the order's full audit trail, oldest → newest, without the rest of the order. Useful " +
+          "for a timeline view or for refreshing it after a transition.\n\n" +
+          "Same access rule as reading the order: a client may only read the history of their own orders.",
+        parameters: [{ $ref: "#/components/parameters/orderId" }],
+        responses: {
+          200: {
+            description: "Status history",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/OrderStatusHistoryListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
           404: errorResponse,
         },
       },
