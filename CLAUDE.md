@@ -19,8 +19,11 @@ Express + TypeScript + Prisma + PostgreSQL REST API for an LED neon sign e-comme
 | Create + apply a new Prisma migration (prompts for name) | `npm run prisma:migrate` |
 | Regenerate Prisma Client only (no migration) | `npm run prisma:generate` |
 | Open Prisma Studio (DB browser at `localhost:5555`) | `npm run prisma:studio` |
+| Run the payment tests (Node's built-in runner; no DB/network) | `npm test` |
 
-There is **no test suite, no linter, and no formatter** wired up. Don't invent commands for them.
+There is **no linter and no formatter** wired up. Don't invent commands for them.
+
+The only tests are the payment suite in `tests/`, run with `npm test`. It uses Node's built-in runner (`node --test`) with `ts-node` — there is no jest/vitest, no config file, and no test database. `tests/helpers/harness.ts` swaps the Prisma, Stripe, cart and order modules in `require.cache` before loading `payment.service`. Follow that pattern rather than adding a test framework.
 
 After running `prisma:migrate` or `prisma:generate`, stale Prisma type errors in VS Code may persist — restart the TS server (Command Palette → "TypeScript: Restart TS server").
 
@@ -67,6 +70,19 @@ If you add new endpoints, follow the same split (public-facing reads by slug, ad
 2. Create `src/services/<name>.service.ts` — define the input interface, validate, normalize, and expose CRUD methods that throw `HttpError` on missing rows.
 3. Create `src/controllers/<name>.controller.ts` — one async function per route, wrap responses with `ok`/`okList`, forward errors with `next(err)`.
 4. Create `src/routes/<name>.routes.ts` and mount it in [src/routes/index.ts](src/routes/index.ts).
+
+## Payments (Stripe)
+
+`POST /api/payments/create-intent` and `POST /api/payments/webhook/stripe` live in [src/services/payment.service.ts](src/services/payment.service.ts). Four invariants there are load-bearing — do not weaken them:
+
+1. **The amount always comes from the database.** `priceCheckout` calls `cartService.validateCart({ items })` with the lines only, so a frontend-supplied amount is structurally unusable. Amount fields in the request body are a 400, not a silent override.
+2. **Only the verified webhook writes payment outcomes.** Order status changes go through `orderService.recordPaymentStatusChange` (actor `CHANGED_BY_STRIPE_WEBHOOK`), never from a create-intent response or anything the browser reports.
+3. **The webhook needs the raw body.** `express.json({ verify: captureRawBody })` in [src/app.ts](src/app.ts) keeps the untouched bytes for the webhook path. Changing body parsing breaks signature verification.
+4. **Both endpoints are idempotent.** Create-intent reuses an order via `Order.checkoutKey` under a PostgreSQL advisory lock plus a Stripe idempotency key; the webhook claims `StripeWebhookEvent.stripeEventId` before doing work and releases the claim if the work throws.
+
+Stripe amounts go in the currency's smallest unit and MXN has two decimals — use `toStripeAmount`/`fromStripeAmount` from [src/utils/stripeConfig.ts](src/utils/stripeConfig.ts) rather than multiplying by 100.
+
+Never log a secret key, a client secret, or a raw Stripe error object; `toSafeStripeError` exists for that.
 
 ## Documentation
 

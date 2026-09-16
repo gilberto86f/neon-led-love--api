@@ -12,7 +12,8 @@
     "prisma:studio": "prisma studio --browser none",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres"
+    "db:logs": "docker compose logs -f postgres",
+    "test": "node -r ts-node/register/transpile-only --test tests/stripeAmount.test.ts tests/payment.service.test.ts tests/payment.webhook.test.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
@@ -22,6 +23,7 @@
     "express": "^4.21.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
+    "stripe": "^22.6.0",
     "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
@@ -33,6 +35,7 @@
     "@types/node": "^22.9.0",
     "@types/swagger-ui-express": "^4.1.8",
     "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.6.3"
   }

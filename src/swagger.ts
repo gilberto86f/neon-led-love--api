@@ -58,7 +58,10 @@ export const swaggerSpec = {
       "| Create a quote (`POST /api/quotes`) | ✅ | ✅ | ✅ (guests too) |\n" +
       "| List / read **own** quotes | ✅ | ✅ | ✅ (own only) |\n" +
       "| Update quotes | ✅ | ✅ | ❌ |\n" +
-      "| Delete quotes | ✅ | ❌ | ❌ |\n\n" +
+      "| Delete quotes | ✅ | ❌ | ❌ |\n" +
+      "| Start a payment (`POST /api/payments/create-intent`) | ✅ | ✅ | ✅ |\n" +
+      "| Read the payments on an order | ✅ | ✅ | ✅ (own orders only) |\n" +
+      "| `POST /api/payments/webhook/stripe` | — | — | — (Stripe only; the signature is the auth) |\n\n" +
       "Notes: super bypasses all checks. Ownership uses the token's user id, never an id from the body. " +
       "Public self-registration always creates a `client`; a client updating its own account cannot change its `role`/`status`.",
   },
@@ -144,6 +147,25 @@ export const swaggerSpec = {
         "right before checkout: confirms each product/variant still exists and is active, checks stock, " +
         "re-derives prices, recalculates totals, and returns refreshed item data so the frontend can sync " +
         "its cart. Independent from Orders — it neither reads nor writes orders.",
+    },
+    {
+      name: "Payments",
+      description:
+        "Stripe payments, using PaymentIntents so the frontend can mount the Stripe Payment Element.\n\n" +
+        "**The backend is the source of truth for both price and payment status.** " +
+        "`POST /api/payments/create-intent` re-prices the basket against the live database, creates " +
+        "the Order at `0` (PENDING_PAYMENT), creates a Stripe PaymentIntent for that amount and " +
+        "returns its `clientSecret`. Amounts sent by the frontend are rejected with `400`, not " +
+        "silently ignored.\n\n" +
+        "An order becomes `1` (PAID) only when the signature-verified webhook says the money " +
+        "arrived — never because the browser's `confirmPayment()` resolved.\n\n" +
+        "The endpoint is **idempotent**: repeating it for the same basket returns the same order " +
+        "and the same PaymentIntent (`200` with `reused: true`) instead of creating a second one. " +
+        "`201` means this call created something new — the order, or a fresh PaymentIntent for it.\n\n" +
+        "There is no `cartId` — this API does not persist carts. The frontend holds the cart and " +
+        "sends its lines here, exactly as it does to `POST /api/cart/validate`.\n\n" +
+        "No card number, CVC or expiry ever reaches this API: Stripe Elements collects them in the " +
+        "browser and sends them straight to Stripe.",
     },
     {
       name: "Auth",
@@ -630,6 +652,15 @@ export const swaggerSpec = {
           success: { type: "integer", enum: [0], example: 0 },
           status: { type: "integer", example: 400 },
           error: { type: "string", example: 'Field is required: "name"' },
+          details: {
+            type: "object",
+            nullable: true,
+            description:
+              "Optional machine-readable context for a failure. Present only on errors the " +
+              "frontend is expected to *act* on rather than merely display — today that is " +
+              "POST /api/payments/create-intent (see PaymentErrorDetails). Every other endpoint " +
+              "omits the key entirely, so the envelope is unchanged for existing consumers.",
+          },
         },
       },
       DeletedResponse: {
@@ -1560,6 +1591,203 @@ export const swaggerSpec = {
           taxAmount: { type: "number", example: 0 },
           discountAmount: { type: "number", example: 0 },
           totalAmount: { type: "number", example: 15000 },
+        },
+      },
+      PaymentStatus: {
+        type: "integer",
+        enum: [0, 1, 2, 3, 4],
+        description:
+          "Status of one payment attempt, as a number:\n\n" +
+          "| Value | Name | Meaning |\n" +
+          "| --- | --- | --- |\n" +
+          "| `0` | PENDING | The PaymentIntent exists and is waiting to be confirmed. Covers Stripe's `requires_payment_method`, `requires_confirmation` and `requires_action`. |\n" +
+          "| `1` | PROCESSING | Stripe is processing an asynchronous payment (an OXXO voucher, a bank debit). The money has not arrived yet. |\n" +
+          "| `2` | SUCCEEDED | Paid. The order moves to `1` (PAID). |\n" +
+          "| `3` | FAILED | The last attempt was declined. The intent can usually still be retried. |\n" +
+          "| `4` | CANCELED | The PaymentIntent was cancelled. |\n\n" +
+          "Written **only** by the signature-verified Stripe webhook.",
+        example: 0,
+      },
+      Payment: {
+        type: "object",
+        description:
+          "One payment attempt against an order. Holds no card data of any kind and no client " +
+          "secret — Stripe Elements collects card details in the browser and they never reach this API.",
+        properties: {
+          id: { type: "integer", example: 1 },
+          orderId: { type: "integer", example: 12 },
+          provider: { type: "string", example: "stripe" },
+          providerPaymentId: {
+            type: "string",
+            example: "pi_3QabcDEFghIJklmn0PQrstuv",
+            description: "The Stripe PaymentIntent id. Unique across all payments.",
+          },
+          status: { $ref: "#/components/schemas/PaymentStatus" },
+          amount: { type: "number", example: 1465.2, description: "Amount in pesos." },
+          currency: { type: "string", example: "mxn" },
+          failureCode: {
+            type: "string",
+            nullable: true,
+            example: "card_declined",
+            description: "Stripe's failure or decline code from the most recent failed attempt.",
+          },
+          failureMessage: {
+            type: "string",
+            nullable: true,
+            example: "Your card has insufficient funds.",
+          },
+          createdAt: { type: "string", format: "date-time" },
+          updatedAt: { type: "string", format: "date-time" },
+        },
+      },
+      CreatePaymentIntentInput: {
+        type: "object",
+        description:
+          "Starts, or resumes, a payment.\n\n" +
+          "Send **`items`** for a normal checkout — the same cart lines `POST /api/cart/validate` " +
+          "accepts. There is no `cartId`: this API does not persist carts.\n\n" +
+          "Send **`orderId`** instead to retry an order that already exists, for example after a " +
+          "declined card. Its stored amounts are reused as-is.\n\n" +
+          "**Amount fields are rejected.** Sending `totalAmount`, `subtotalAmount`, " +
+          "`shippingAmount`, `taxAmount` or `amount` returns `400` — the server calculates " +
+          "the amount from the database, and a frontend that believes otherwise should find out at once.",
+        properties: {
+          items: {
+            type: "array",
+            minItems: 1,
+            items: { $ref: "#/components/schemas/CartItem" },
+            description:
+              "The basket. Required unless `orderId` is given. Every line is re-priced against the " +
+              "live product and variant rows; the prices you send are compared, never trusted.",
+          },
+          shippingAddress: {
+            allOf: [{ $ref: "#/components/schemas/ShippingAddress" }],
+            nullable: true,
+            description:
+              "Optional, but validated when present and stored on the order. It is part of the " +
+              "checkout fingerprint, so changing the address starts a new order.",
+          },
+          notes: { type: "string", nullable: true, example: "Ring the bell twice." },
+          orderId: {
+            type: "integer",
+            minimum: 1,
+            example: 12,
+            description:
+              "Retry an existing PENDING_PAYMENT or PAYMENT_FAILED order instead of pricing a basket. " +
+              "When present, `items` is ignored.",
+          },
+        },
+      },
+      CreatePaymentIntentResult: {
+        type: "object",
+        properties: {
+          clientSecret: {
+            type: "string",
+            example: "pi_3QabcDEFghIJklmn0PQrstuv_secret_XyZ123",
+            description:
+              "Pass this to `stripe.elements({ clientSecret })` and `stripe.confirmPayment()`. " +
+              "It is scoped to this one PaymentIntent — it is **not** an API key — but treat it as " +
+              "sensitive: never log it and never put it in a URL.",
+          },
+          paymentIntentId: { type: "string", example: "pi_3QabcDEFghIJklmn0PQrstuv" },
+          orderId: { type: "integer", example: 12 },
+          amount: {
+            type: "number",
+            example: 1465.2,
+            description:
+              "The authoritative total in pesos, exactly as charged. Stripe itself was sent " +
+              "`146520`: MXN is a two-decimal currency, so amounts go to Stripe in centavos.",
+          },
+          currency: { type: "string", example: "mxn" },
+          status: { $ref: "#/components/schemas/PaymentStatus" },
+          reused: {
+            type: "boolean",
+            example: false,
+            description:
+              "`true` when this call created nothing — both the order and its PaymentIntent already " +
+              "existed, as after a double-clicked Pay button, a refresh, or a retried request. The " +
+              "response is `200` in that case and `201` whenever either was created.",
+          },
+          order: {
+            allOf: [{ $ref: "#/components/schemas/Order" }],
+            description:
+              "The full order, so the frontend can render the summary without a second request.",
+          },
+        },
+      },
+      CreatePaymentIntentResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 201 },
+          data: { $ref: "#/components/schemas/CreatePaymentIntentResult" },
+        },
+      },
+      PaymentErrorDetails: {
+        type: "object",
+        description:
+          "The `details` object carried by a payment error. Switch on `code`; the remaining " +
+          "fields depend on it.",
+        properties: {
+          code: {
+            type: "string",
+            enum: [
+              "CART_INVALID",
+              "AMOUNT_BELOW_MINIMUM",
+              "ORDER_ALREADY_PAID",
+              "ORDER_NOT_PAYABLE",
+            ],
+            example: "CART_INVALID",
+          },
+          issues: {
+            type: "array",
+            items: { $ref: "#/components/schemas/CartIssue" },
+            description:
+              "Present on `CART_INVALID` (409) — the same structured issues " +
+              "`POST /api/cart/validate` returns. Refresh the cart from them and try again.",
+          },
+          minimum: {
+            type: "number",
+            example: 10,
+            description:
+              "Present on `AMOUNT_BELOW_MINIMUM` (400). Stripe's floor for MXN is 10.00.",
+          },
+          totalAmount: { type: "number", example: 5 },
+          orderId: { type: "integer", example: 12 },
+          status: { $ref: "#/components/schemas/OrderStatus" },
+        },
+      },
+      PaymentListResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          results: { type: "array", items: { $ref: "#/components/schemas/Payment" } },
+          total: { type: "integer", example: 1 },
+        },
+      },
+      StripeWebhookResponse: {
+        type: "object",
+        properties: {
+          success: { type: "integer", enum: [1], example: 1 },
+          status: { type: "integer", example: 200 },
+          data: {
+            type: "object",
+            properties: {
+              received: { type: "boolean", enum: [true], example: true },
+              handled: {
+                type: "boolean",
+                example: true,
+                description: "`false` when the event type is one this API deliberately ignores.",
+              },
+              duplicate: {
+                type: "boolean",
+                example: false,
+                description: "`true` when this exact event id had already been processed.",
+              },
+              eventType: { type: "string", example: "payment_intent.succeeded" },
+            },
+          },
         },
       },
       CartValidationResponse: {
@@ -3679,6 +3907,216 @@ export const swaggerSpec = {
             },
           },
           400: errorResponse,
+        },
+      },
+    },
+    // ── Payments ────────────────────────────────────────────────────────────
+    "/api/payments/create-intent": {
+      post: {
+        tags: ["Payments"],
+        summary: "Start (or resume) a Stripe payment for a cart",
+        description:
+          "Prices the basket on the server, creates the Order at `0` (PENDING_PAYMENT), creates a " +
+          "Stripe PaymentIntent for that amount, and returns its `clientSecret` for Stripe " +
+          "Elements.\n\n" +
+          "### What the server does\n\n" +
+          "1. Authenticates the caller — the shopper is taken from the token, never from the body.\n" +
+          "2. Re-validates every cart line against the live database (product active, variant intact, " +
+          "stock sufficient, price unchanged) using the same engine as `POST /api/cart/validate`.\n" +
+          "3. Recalculates subtotal, shipping, tax and total. Shipping and tax are `0` today, " +
+          "matching the cart validator.\n" +
+          "4. Finds the order this basket already produced, or creates one.\n" +
+          "5. Creates or reuses the PaymentIntent and returns its client secret.\n\n" +
+          "### Idempotency\n\n" +
+          "Safe to call repeatedly. A double-clicked Pay button, a browser refresh, or a retried " +
+          "request all resolve to the **same order and the same PaymentIntent**, answered with " +
+          "`200` and `reused: true`. `201` means this call created the order. Changing the " +
+          "basket, the address or the price starts a new checkout and therefore a new order.\n\n" +
+          "### What this endpoint will not accept\n\n" +
+          "Sending `totalAmount`, `subtotalAmount`, `shippingAmount`, `taxAmount` or " +
+          "`amount` is a `400`. The server is the only authority on price.\n\n" +
+          "### After this call\n\n" +
+          "Mount the Payment Element with the `clientSecret` and call `stripe.confirmPayment()`. " +
+          "A resolved `confirmPayment()` does **not** mean the order is paid — only the Stripe " +
+          "webhook moves it to `1` (PAID). Poll `GET /api/orders/{id}` or " +
+          "`GET /api/payments/order/{orderId}` to observe it.",
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            "application/json": {
+              schema: { $ref: "#/components/schemas/CreatePaymentIntentInput" },
+            },
+          },
+        },
+        responses: {
+          200: {
+            description:
+              "Nothing was created: both the order and its PaymentIntent already existed from an " +
+              "earlier identical request (`reused: true`).",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CreatePaymentIntentResponse" },
+              },
+            },
+          },
+          201: {
+            description:
+              "Something was created by this call — the order, or a fresh PaymentIntent for an " +
+              "order that already existed. A PaymentIntent is ready either way.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/CreatePaymentIntentResponse" },
+              },
+            },
+          },
+          400: {
+            description:
+              "Malformed body, an empty `items` array, an amount field the client is not allowed " +
+              "to send, an invalid shipping address, or a total below Stripe's MXN minimum of 10.00 " +
+              "(`details.code = AMOUNT_BELOW_MINIMUM`).",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/ErrorResponse" },
+              },
+            },
+          },
+          401: errorResponse,
+          403: {
+            description:
+              "The `orderId` belongs to another shopper. Deliberately indistinguishable from an " +
+              "order that does not exist.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
+          404: {
+            description: "The `orderId` does not exist.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
+          409: {
+            description:
+              "The checkout cannot proceed. `details.code` says why:\n\n" +
+              "- `CART_INVALID` — a price, product or stock level changed. `details.issues` " +
+              "carries the same structured issues as `POST /api/cart/validate`: refresh the cart " +
+              "from them, show the shopper what changed, and call again.\n" +
+              "- `ORDER_ALREADY_PAID` — the order has already been paid.\n" +
+              "- `ORDER_NOT_PAYABLE` — the order is cancelled, refunded or otherwise past paying.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
+          502: {
+            description:
+              "Stripe could not be reached or refused the request. Safe to retry — no duplicate " +
+              "order is created. Stripe's own error detail is never included.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
+          503: {
+            description:
+              "Payments are not configured on this server (`STRIPE_SECRET_KEY` missing), or Stripe " +
+              "rejected our credentials.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
+        },
+      },
+    },
+    "/api/payments/order/{orderId}": {
+      get: {
+        tags: ["Payments"],
+        summary: "List the payment attempts on an order",
+        description:
+          "Every attempt made against one order, newest first. Same ownership rule as the order " +
+          "itself: a client sees only their own, super/admin see any.\n\n" +
+          "Contains no card data and no client secrets.",
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: "orderId",
+            in: "path",
+            required: true,
+            description: "Numeric order ID",
+            schema: { type: "integer", minimum: 1 },
+          },
+        ],
+        responses: {
+          200: {
+            description: "The order's payment attempts",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/PaymentListResponse" },
+              },
+            },
+          },
+          400: errorResponse,
+          401: errorResponse,
+          403: errorResponse,
+          404: errorResponse,
+        },
+      },
+    },
+    "/api/payments/webhook/stripe": {
+      post: {
+        tags: ["Payments"],
+        summary: "Stripe webhook (called by Stripe, not by your app)",
+        description:
+          "**Do not call this from the frontend.** Stripe calls it, and the `Stripe-Signature` " +
+          "header is the authentication — there is no JWT.\n\n" +
+          "The signature is verified against `STRIPE_WEBHOOK_SECRET` over the *raw* request bytes, " +
+          "so the app captures the unparsed body for this path only " +
+          "(`src/middlewares/stripeRawBody.ts`).\n\n" +
+          "### Events handled\n\n" +
+          "| Event | Payment | Order |\n" +
+          "| --- | --- | --- |\n" +
+          "| `payment_intent.succeeded` | SUCCEEDED | → `1` PAID |\n" +
+          "| `payment_intent.processing` | PROCESSING | unchanged (money has not arrived) |\n" +
+          "| `payment_intent.payment_failed` | FAILED (+ failure code/message) | → `2` PAYMENT_FAILED |\n" +
+          "| `payment_intent.canceled` | CANCELED | → `9` CANCELLED |\n\n" +
+          "Any other event type is acknowledged with `200` and `handled: false`.\n\n" +
+          "### Idempotency\n\n" +
+          "Stripe delivers at least once. Each event id is claimed in the `StripeWebhookEvent` " +
+          "table before processing, so a redelivery returns `200` with `duplicate: true` and " +
+          "applies nothing. If processing fails the claim is released and a `500` is returned, " +
+          "which is what asks Stripe to retry.",
+        responses: {
+          200: {
+            description:
+              "The event was processed, was a duplicate, or was a type this API ignores. In all " +
+              "three cases Stripe should not retry.",
+            content: {
+              "application/json": {
+                schema: { $ref: "#/components/schemas/StripeWebhookResponse" },
+              },
+            },
+          },
+          400: {
+            description:
+              "The signature is missing or invalid, or the raw body was unavailable. Stripe will " +
+              "not retry.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
+          500: {
+            description:
+              "Processing failed. The event claim is released so Stripe's retry can apply it.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
+          503: {
+            description:
+              "`STRIPE_WEBHOOK_SECRET` is not configured on this server.",
+            content: {
+              "application/json": { schema: { $ref: "#/components/schemas/ErrorResponse" } },
+            },
+          },
         },
       },
     },

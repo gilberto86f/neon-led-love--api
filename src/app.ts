@@ -4,13 +4,17 @@ import path from 'path';
 import swaggerUi from 'swagger-ui-express';
 import routes from './routes';
 import { errorHandler, notFoundHandler } from './middlewares/errorHandler';
+import { captureRawBody } from './middlewares/stripeRawBody';
 import { swaggerSpec } from './swagger';
 
 export const createApp = () => {
   const app = express();
 
   app.use(cors());
-  app.use(express.json());
+  // `verify` keeps the untouched request bytes for the Stripe webhook only.
+  // Stripe signs the raw payload, so verifying against a re-serialised body
+  // would fail — see src/middlewares/stripeRawBody.ts.
+  app.use(express.json({ verify: captureRawBody }));
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   app.get('/health', (_req, res) => {

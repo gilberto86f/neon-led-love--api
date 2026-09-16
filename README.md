@@ -20,6 +20,7 @@ Backend API for an e-commerce site that sells LED neon signs. This document is w
 12. [Useful npm scripts](#12-useful-npm-scripts)
 13. [Connecting from your Angular frontend](#13-connecting-from-your-angular-frontend)
 14. [After pulling changes](#14-after-pulling-changes)
+15. [Payments with Stripe](#15-payments-with-stripe)
 
 ---
 
@@ -136,6 +137,11 @@ JWT_ACCESS_EXPIRES_IN="30m"
 JWT_REFRESH_EXPIRES_IN="30d"
 JWT_REFRESH_TTL_DAYS=30
 BCRYPT_SALT_ROUNDS=10
+
+# --- Stripe payments ---
+STRIPE_SECRET_KEY="sk_test_change_me"
+STRIPE_WEBHOOK_SECRET="whsec_change_me"
+STRIPE_CURRENCY="mxn"
 ```
 
 | Variable                    | What it controls                                                                                      |
@@ -146,8 +152,15 @@ BCRYPT_SALT_ROUNDS=10
 | `JWT_REFRESH_EXPIRES_IN`    | Lifetime of a refresh token (e.g. `30d`). Default: `30d`.                                             |
 | `JWT_REFRESH_TTL_DAYS`      | Refresh-token expiry stored in the database in days. Should match `JWT_REFRESH_EXPIRES_IN`.           |
 | `BCRYPT_SALT_ROUNDS`        | bcrypt cost factor for hashing passwords. Default: `10`.                                              |
+| `STRIPE_SECRET_KEY`         | Your Stripe **secret** API key (`sk_test_…` in test mode). Server-side only — see the warning below. |
+| `STRIPE_WEBHOOK_SECRET`     | Signing secret used to verify that a webhook request really came from Stripe (`whsec_…`).           |
+| `STRIPE_CURRENCY`           | ISO currency code sent to Stripe, lowercase. Default: `mxn`.                                        |
 
-> If `NODE_ENV=production`, the server refuses to start unless `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are set to non-default values.
+> **Never give `STRIPE_SECRET_KEY` to Angular.** That key can charge cards, issue refunds and read every customer on the account. The frontend uses the *publishable* key (`pk_test_…`), which is designed to be public and lives in the frontend's own environment file. This API never returns the secret key in any response.
+
+> Leaving the Stripe variables empty is fine while you are not working on payments: the server still starts and every other endpoint works. Only the payment endpoints respond, with a clear `503`, saying payments are not configured.
+
+> If `NODE_ENV=production`, the server refuses to start unless `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` are set to non-default values — and the same applies to `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET`.
 
 Breaking down `DATABASE_URL`:
 
@@ -273,6 +286,8 @@ Authorization: Bearer <accessToken>
 | List / read quotes                                               |  ✅   |  ✅   | ✅ (own quotes only) |
 | Update a quote                                                   |  ✅   |  ✅   | ❌                  |
 | Delete a quote                                                   |  ✅   |  ❌   | ❌                  |
+| Start a payment (`POST /api/payments/create-intent`)             |  ✅   |  ✅   | ✅                  |
+| Read the payment attempts on an order                            |  ✅   |  ✅   | ✅ (own orders only) |
 
 **Ownership rules.** "Own only" means the API compares the `id` inside your token to the resource — never an `id` from the request body. A client can `GET/PUT/DELETE /api/users/{theirOwnId}` but gets `403` for anyone else's id; `GET /api/orders` returns only their own orders. When a non-super user updates their own account, any `role` or `status` they put in the body is **ignored** (you can't promote yourself).
 
@@ -685,6 +700,23 @@ A pre-checkout safety check. The frontend keeps the shopper's cart in LocalStora
 > **Access:** public — checkout must work for guests, so no token is required.
 
 It does **not** touch orders — validating a cart neither reads nor writes any order. Think of it as the step between "Cart" and "Checkout": `Cart → Validate Cart → Checkout → Create Order`. See [Cart validation fields](#cart-validation-fields) for the request/response shape.
+
+**Payments**
+
+Card payments through Stripe. The frontend collects the card with Stripe's Payment Element; this API decides what to charge and, later, whether the payment actually succeeded. Full walkthrough in [Payments with Stripe](#15-payments-with-stripe).
+
+| Method | Path                        | Body (JSON)                                       | Protected | What it does                                                     |
+| ------ | --------------------------- | ------------------------------------------------- | --------- | ---------------------------------------------------------------- |
+| POST   | `/payments/create-intent`   | [Create intent](#payment-fields)                  | yes       | Price the cart, create the order, return a Stripe `clientSecret`. |
+| GET    | `/payments/order/{orderId}` | —                                                 | yes       | List the payment attempts on one order.                          |
+| POST   | `/payments/webhook/stripe`  | *(sent by Stripe)*                                | signature | Stripe tells us the payment succeeded, failed or was cancelled.  |
+
+> **Access:** `create-intent` and the order lookup require a logged-in user; a client can only pay for their own cart and read their own orders. The webhook is called by **Stripe**, not by your app — it has no token, and the `Stripe-Signature` header is what proves it is genuine.
+
+Two rules that the frontend has to be built around:
+
+1. **The backend decides the price.** Send the cart *lines*; do not send `totalAmount` or any other amount. Doing so is a `400`, not a silent correction.
+2. **The backend decides when an order is paid.** `stripe.confirmPayment()` resolving in the browser is not proof of payment — only the webhook moves an order to PAID.
 
 > **HTTP method conventions** (REST): GET = read, POST = create, PUT = replace, DELETE = remove. The URL identifies the resource, the method describes the action.
 
@@ -1499,6 +1531,103 @@ Because each issue carries a stable `code` plus the raw data (available stock, o
 }
 ```
 
+### Payment fields
+
+Everything the frontend sends to and receives from `POST /api/payments/create-intent`.
+
+**Request**
+
+| Field             | Type            | Required | Notes                                                                                                                     |
+| ----------------- | --------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `items`           | array           | yes\*    | The cart lines — exactly the same objects `POST /cart/validate` takes. See [Cart validation fields](#cart-validation-fields). |
+| `shippingAddress` | object          | no       | Same shape as an order's `shippingAddress`. Validated if sent, and stored on the order.                                   |
+| `notes`           | string \| null  | no       | Free text saved on the order (e.g. delivery instructions).                                                                |
+| `orderId`         | number          | no\*     | Retry an order that already exists instead of pricing a cart. When present, `items` is ignored.                            |
+
+\* Send **either** `items` (normal checkout) **or** `orderId` (retry an existing order).
+
+**Fields the server refuses**
+
+Sending any of `totalAmount`, `subtotalAmount`, `shippingAmount`, `taxAmount` or `amount` returns `400`. They are not ignored — the request fails, on purpose, so a frontend that thinks it controls the price finds out immediately instead of quietly being overruled.
+
+**Response (`data`)**
+
+| Field             | Type    | Notes                                                                                                        |
+| ----------------- | ------- | ------------------------------------------------------------------------------------------------------------ |
+| `clientSecret`    | string  | Hand this to Stripe Elements. Scoped to one PaymentIntent — not an API key, but still don't log it.          |
+| `paymentIntentId` | string  | The Stripe id (`pi_…`).                                                                                       |
+| `orderId`         | number  | The order this payment belongs to. Already created, sitting at status `0` (PENDING_PAYMENT).                 |
+| `amount`          | number  | The authoritative total **in pesos**, e.g. `1465.2`. Stripe itself received `146520` — see the note below.   |
+| `currency`        | string  | `"mxn"`.                                                                                                      |
+| `status`          | number  | Payment status enum — see the table below.                                                                    |
+| `reused`          | boolean | `true` when this call created nothing — the order *and* its PaymentIntent already existed. See the idempotency notes. |
+| `order`           | object  | The whole order, so you can render the summary without a second request.                                     |
+
+**HTTP status codes**
+
+| Code  | When                                                                                                                            |
+| ----- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `201` | Something was created by this call — the order, or a fresh PaymentIntent for an order that already existed.                      |
+| `200` | Nothing was created: an identical earlier request had already made both, and you got the same ones back (`reused: true`).       |
+| `400` | Malformed body, empty `items`, an amount field you're not allowed to send, a bad shipping address, or a total below MXN 10.00.   |
+| `401` | No token, or an expired one.                                                                                                    |
+| `403` | The `orderId` belongs to somebody else.                                                                                          |
+| `404` | The `orderId` doesn't exist.                                                                                                     |
+| `409` | The checkout can't proceed — read `details.code`. See below.                                                                     |
+| `502` | Stripe couldn't be reached. Safe to retry; no duplicate order is created.                                                       |
+| `503` | Payments aren't configured on this server (`STRIPE_SECRET_KEY` is missing), or Stripe rejected our credentials.                 |
+
+**Payment-specific errors (`details.code`)**
+
+Errors from this endpoint add a `details` object to the normal envelope. Everything else about the envelope is unchanged, and no other endpoint sends `details`.
+
+```json
+{
+  "success": 0,
+  "status": 409,
+  "error": "The cart is no longer valid. Refresh it and try again.",
+  "details": {
+    "code": "CART_INVALID",
+    "issues": [
+      {
+        "code": "PRICE_CHANGED",
+        "message": "The price of product \"Bulbasaur\" has changed.",
+        "productId": 7,
+        "productName": "Bulbasaur",
+        "variantId": 10,
+        "previousUnitPrice": 1465.2,
+        "currentUnitPrice": 1600
+      }
+    ]
+  }
+}
+```
+
+| `details.code`         | Status | What it means and what to do                                                                                                                            |
+| ---------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `CART_INVALID`         | `409`  | A price, product or stock level changed. `details.issues` holds the same structured issues `POST /cart/validate` returns — refresh the cart from them, show the shopper what changed, then call again. |
+| `AMOUNT_BELOW_MINIMUM` | `400`  | The total is under Stripe's floor for MXN (`10.00`). `details.minimum` and `details.totalAmount` say by how much.                                        |
+| `ORDER_ALREADY_PAID`   | `409`  | This order is already paid. Send the shopper to the confirmation page, don't retry.                                                                     |
+| `ORDER_NOT_PAYABLE`    | `409`  | The order is cancelled, refunded, or otherwise past the point of paying.                                                                                |
+
+**Payment status values**
+
+`Payment.status` is a number, following the same convention as order and quote statuses.
+
+| Value | Name         | Meaning                                                                                                     |
+| ----- | ------------ | ------------------------------------------------------------------------------------------------------------ |
+| `0`   | `PENDING`    | The PaymentIntent exists and is waiting for the shopper to confirm it. Money has not moved.                 |
+| `1`   | `PROCESSING` | An asynchronous payment is in flight (an OXXO voucher, a bank debit). The money hasn't arrived yet.         |
+| `2`   | `SUCCEEDED`  | Paid. The order is moved to `1` (PAID).                                                                     |
+| `3`   | `FAILED`     | The last attempt was declined. `failureCode` / `failureMessage` say why. Usually retryable.                 |
+| `4`   | `CANCELED`   | The PaymentIntent was cancelled.                                                                            |
+
+These are written **only** by the Stripe webhook. Nothing the browser does can set them.
+
+**About the amount sent to Stripe.** Stripe takes amounts as a whole number in the currency's *smallest unit*. The Mexican peso has two decimals, so `$1,465.20 MXN` is sent as `146520` centavos. This matters because it is not universal — Japanese yen has no decimal part, so ¥500 is sent as `500`, not `50000`. The conversion lives in [src/utils/stripeConfig.ts](src/utils/stripeConfig.ts) and handles all three cases (zero-, two- and three-decimal currencies). The `amount` this API returns to you is always in **pesos**, not centavos.
+
+---
+
 ### Custom Prices fields
 
 The Custom Neon builder pulls every numeric knob it needs (per-character prices, backboard surcharges, multipliers, kit add-ons, etc.) from a single, site-wide configuration row. The CMS edits that row through these endpoints; there are no IDs and no listing — there is exactly one configuration.
@@ -1820,13 +1949,17 @@ neon-led-love--api/
 │   │   └── errorHandler.ts
 │   ├── prisma/
 │   │   └── client.ts           A single, shared PrismaClient instance.
+│   ├── stripe/
+│   │   └── client.ts           A single, shared Stripe instance. Same idea as prisma/client.ts.
 │   ├── utils/
 │   │   ├── apiResponse.ts      Helpers (`ok`, `okList`, `fail`) that build ApiNeonResponse.
-│   │   └── HttpError.ts        Custom error class with an HTTP status code attached.
+│   │   ├── HttpError.ts        Custom error class with an HTTP status code attached.
+│   │   └── stripeConfig.ts     Stripe env vars + currency/amount conversion.
 │   ├── app.ts                  Builds the Express app (middlewares, routes, error handlers).
 │   └── server.ts               Entry point — starts the HTTP listener.
+├── tests/                      Unit tests for the payment flow. Run with `npm test`.
 ├── docker-compose.yml          Defines the PostgreSQL container.
-├── .env                        Local secrets (DB URL, port). NOT committed.
+├── .env                        Local secrets (DB URL, port, Stripe keys). NOT committed.
 ├── .env.example                Template for .env. Committed.
 ├── package.json                Dependencies + npm scripts.
 └── tsconfig.json               TypeScript compiler settings.
@@ -1886,6 +2019,14 @@ Another PostgreSQL is already running on your machine on the same port. Stop it,
 
 Your Angular app's URL must be allowed by the API. CORS is currently wide-open (`app.use(cors())`) — fine for development. If you tighten it later, add your Angular origin (e.g. `http://localhost:4200`) to the allowlist.
 
+### `400 Invalid Stripe signature.` on the webhook
+
+The `STRIPE_WEBHOOK_SECRET` in [.env](.env) doesn't match the secret Stripe is signing with. Copy the `whsec_…` value that `stripe listen` prints and restart `npm run dev`. Full details in [Payments with Stripe](#15-payments-with-stripe).
+
+### `503 Payments are not configured on this server`
+
+`STRIPE_SECRET_KEY` is missing from [.env](.env), or the server was started before you added it. Environment variables are read once at startup, so restart after editing `.env`.
+
 ### `npm warn ... --name is being parsed as a normal command line argument`
 
 Newer npm versions strip `--`. The script in [package.json](package.json) already includes `--name init` directly, so just run `npm run prisma:migrate` (no extra args).
@@ -1905,6 +2046,7 @@ Newer npm versions strip `--`. The script in [package.json](package.json) alread
 | `npm run db:up`           | Start the PostgreSQL Docker container.                                           |
 | `npm run db:down`         | Stop the PostgreSQL container (data is preserved).                               |
 | `npm run db:logs`         | Tail the Postgres container logs.                                                |
+| `npm test`                | Run the payment test suite (Node's built-in test runner — no database needed).   |
 
 > **Tip:** `npm run prisma:studio` is the easiest way to see what's in your database without writing SQL.
 
@@ -2007,5 +2149,273 @@ npm run dev
 | `prisma/schema.prisma` changed              | `npm run prisma:migrate`              |
 | Only `.ts` source files changed             | Nothing — `npm run dev` auto-restarts |
 | `.env.example` changed (new variable added) | Update your `.env` manually           |
+| Working on payments locally                 | `stripe listen --forward-to localhost:3000/api/payments/webhook/stripe` |
 | Database is out of sync / tables look wrong | `npm run prisma:migrate`              |
 | See what's in your database                 | `npm run prisma:studio`               |
+
+---
+
+## 15. Payments with Stripe
+
+This is the longest section in the README, and deliberately so: payments are the one place where a bug costs real money. Read it before touching the checkout.
+
+### 15.1. The one-minute version
+
+Stripe splits a card payment into two halves:
+
+- **The card half** happens entirely in the browser. Stripe's JavaScript (the *Payment Element*) collects the card number, sends it straight to Stripe's servers, and never lets it near this API. That is the whole point — card numbers you never receive are card numbers you can never leak, and it keeps you out of most of PCI compliance.
+- **The money half** happens here. This API decides *how much* to charge and later records *whether it worked*.
+
+The object that ties the two together is a **PaymentIntent** — Stripe's record of "somebody intends to pay $X". You create it here, get back a `clientSecret`, and hand that secret to the browser so Stripe's JavaScript knows which payment it is completing.
+
+### 15.2. Why the backend has to be in charge
+
+If the browser could say *"charge me $1"*, someone would. Every amount is therefore calculated here, from the database, on every request:
+
+```
+frontend sends:  "these 3 cart lines"          ← lines only, no prices
+backend does:    look up each product & variant in PostgreSQL
+                 re-derive unit prices and discounts
+                 check the product is still active and in stock
+                 add shipping and tax (both 0 today)
+                 → this number, and only this number, goes to Stripe
+```
+
+The same applies in reverse for the *result*. When the shopper finishes paying, Stripe's JavaScript resolves `confirmPayment()` in the browser — but a browser can be lied to, or simply close mid-payment. So this API ignores it. The order is marked PAID when **Stripe's own server** calls our webhook with a cryptographically signed message saying the money arrived.
+
+### 15.3. The full flow
+
+```
+Angular                          This API                        Stripe
+  |                                 |                               |
+  |  POST /payments/create-intent   |                               |
+  |  { items: [...] }               |                               |
+  |-------------------------------->|                               |
+  |                                 | verify the JWT                |
+  |                                 | re-price every line from DB   |
+  |                                 | create Order (PENDING_PAYMENT)|
+  |                                 |  create PaymentIntent         |
+  |                                 |------------------------------>|
+  |                                 |<---- client_secret -----------|
+  |<-- { clientSecret, orderId } ---|                               |
+  |                                 |                               |
+  | mount Payment Element           |                               |
+  | stripe.confirmPayment() ------- card details go straight ------>|
+  |                                 |                               |
+  |                                 |     payment_intent.succeeded  |
+  |                                 |<------------------------------|
+  |                                 | verify signature              |
+  |                                 | Payment -> SUCCEEDED          |
+  |                                 | Order   -> PAID               |
+  |                                 |                               |
+  | GET /orders/{id}  -> status 1 (PAID)                            |
+```
+
+Note the order of the last two steps. The webhook usually arrives *before* the shopper's browser finishes redirecting back to your site, but not always. Design the confirmation page to poll `GET /api/orders/{id}` (or `GET /api/payments/order/{orderId}`) rather than assuming the order is already PAID the moment the browser returns.
+
+### 15.4. What the Angular app does
+
+```ts
+// 1. Ask the backend to start a payment. Send lines, never amounts.
+const { data } = await firstValueFrom(
+  http.post<ApiNeonResponse<CreatePaymentIntentResult>>(
+    `${environment.apiUrl}/payments/create-intent`,
+    { items: cart.items, shippingAddress },
+    // the JWT interceptor adds Authorization: Bearer <accessToken>
+  ),
+);
+
+// 2. Hand the client secret to Stripe. The publishable key is safe in the
+//    frontend; the secret key must never leave the server.
+const stripe = await loadStripe(environment.stripePublishableKey);
+const elements = stripe.elements({ clientSecret: data.clientSecret });
+elements.create("payment").mount("#payment-element");
+
+// 3. Let Stripe collect and confirm the card.
+const { error } = await stripe.confirmPayment({
+  elements,
+  confirmParams: { return_url: `${location.origin}/checkout/confirmation?orderId=${data.orderId}` },
+});
+
+// 4. `error` means the payment did not start. No error means Stripe took over
+//    (possibly via a 3-D Secure redirect). Either way the order is NOT paid
+//    until the backend says so — poll GET /api/orders/{orderId}.
+```
+
+What the frontend must **not** do:
+
+- create PaymentIntents directly against Stripe,
+- calculate or send the amount to charge,
+- mark an order as paid because `confirmPayment()` resolved,
+- hold `STRIPE_SECRET_KEY` anywhere.
+
+### 15.5. Retries, double-clicks and refreshes
+
+`POST /payments/create-intent` is safe to call more than once. The server fingerprints the checkout — who is buying, which lines, which quantities, which address, which total — and looks for an unpaid order with that fingerprint before creating anything:
+
+| What the shopper does                | What happens                                                        |
+| ------------------------------------- | -------------------------------------------------------------------- |
+| Double-clicks **Pay**                 | One order, one PaymentIntent. Second response is `200`, `reused: true`. |
+| Refreshes the checkout page           | Same order, same PaymentIntent, same `clientSecret`.                 |
+| Retries after a network timeout       | Same order. If the first call died before Stripe answered, the retry just creates the intent. |
+| Changes the cart and tries again      | A different fingerprint → a new order. The old unpaid one is left behind and can be deleted. |
+| Card is declined, tries another card  | Same order. It goes PAYMENT_FAILED, then back to PENDING_PAYMENT for the retry. |
+| Comes back tomorrow to pay            | Send `{ "orderId": 12 }` to resume that exact order.                 |
+
+Under the hood this uses two mechanisms: a PostgreSQL advisory lock so two simultaneous requests can't both create an order, and a Stripe **idempotency key** so two simultaneous requests can't both create a PaymentIntent.
+
+### 15.6. Order and payment lifecycle
+
+An order created by checkout starts at `0` (PENDING_PAYMENT) and moves only through the existing order state machine:
+
+```
+PENDING_PAYMENT (0)
+   |  payment_intent.succeeded   -> PAID (1)
+   |  payment_intent.payment_failed -> PAYMENT_FAILED (2)
+   |  payment_intent.canceled    -> CANCELLED (9)
+   |
+PAYMENT_FAILED (2)
+   |  shopper retries -> back to PENDING_PAYMENT (0), then PAID (1)
+```
+
+Every one of those transitions is written to `orderStatusHistory` with `changedByUser: "Stripe Webhook"`, so you can always see in the audit trail that the change came from the payment provider and not from a person.
+
+Some deliberate edge-case behaviour, because webhooks arrive out of order more often than you'd expect:
+
+- A success for an order staff have already moved past PAID (say, IN_PRODUCTION) is **ignored** — it isn't dragged backwards.
+- A failure that arrives after the order is already PAID is **ignored** — it's stale.
+- A success for an order that was already CANCELLED is recorded on the payment, logged loudly as needing a manual refund, and the order is left alone. CANCELLED is terminal, so there is no correct automatic action.
+
+### 15.7. Setting up Stripe locally
+
+**Step 1 — get your test keys.** Create a free account at [dashboard.stripe.com](https://dashboard.stripe.com). Make sure the **Test mode** toggle is on (top right); test mode uses fake money and fake cards. Go to *Developers → API keys* and copy:
+
+- the **Publishable key** (`pk_test_…`) → goes in the *Angular* environment file,
+- the **Secret key** (`sk_test_…`) → goes in this project's `.env` as `STRIPE_SECRET_KEY`.
+
+**Step 2 — install the Stripe CLI.** Stripe's servers can't reach `localhost`, so the CLI opens a tunnel and forwards webhook events to your machine.
+
+```powershell
+# with Scoop
+scoop install stripe
+# or download the .zip from https://github.com/stripe/stripe-cli/releases
+```
+
+Then log in (this opens a browser):
+
+```powershell
+stripe login
+```
+
+**Step 3 — start forwarding, and get the webhook secret.**
+
+```powershell
+stripe listen --forward-to localhost:3000/api/payments/webhook/stripe
+```
+
+It prints something like:
+
+```
+> Ready! Your webhook signing secret is whsec_1a2b3c4d5e6f... (^C to quit)
+```
+
+Copy that `whsec_…` value into `.env` as `STRIPE_WEBHOOK_SECRET`, then **restart `npm run dev`** — environment changes are only read at startup.
+
+> This secret is different every time you run `stripe listen` unless you pass `--api-key`. If webhooks suddenly start failing with `400 Invalid Stripe signature.`, this is almost always why: the CLI restarted and handed out a new secret.
+
+**Step 4 — try it.** With `npm run dev` in one terminal and `stripe listen` in another, run a checkout from the Angular app using a test card:
+
+| Card number           | What it does                                  |
+| --------------------- | ---------------------------------------------- |
+| `4242 4242 4242 4242` | Succeeds immediately.                          |
+| `4000 0000 0000 9995` | Declined — insufficient funds.                 |
+| `4000 0027 6000 3184` | Requires 3-D Secure authentication first.      |
+
+Use any future expiry date, any 3-digit CVC, and any postcode.
+
+You can also fire events by hand without a checkout:
+
+```powershell
+stripe trigger payment_intent.succeeded
+```
+
+(That one creates its own PaymentIntent with no `orderId` metadata, so the API will correctly answer `200` with `handled: true` and change nothing — there's no order to update. It's still a good way to confirm the tunnel and signature verification are working.)
+
+**Step 5 — production.** In the Stripe dashboard go to *Developers → Webhooks → Add endpoint*, point it at `https://your-domain.com/api/payments/webhook/stripe`, and subscribe to these four events:
+
+```
+payment_intent.succeeded
+payment_intent.processing
+payment_intent.payment_failed
+payment_intent.canceled
+```
+
+The endpoint's page shows its own signing secret — that's the production `STRIPE_WEBHOOK_SECRET`.
+
+### 15.8. When something goes wrong
+
+| Symptom                                                        | Cause and fix                                                                                                       |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `503 Payments are not configured on this server`               | `STRIPE_SECRET_KEY` is empty in `.env`, or you didn't restart the server after setting it.                          |
+| `503 Stripe webhooks are not configured`                       | Same, for `STRIPE_WEBHOOK_SECRET`.                                                                                   |
+| `400 Invalid Stripe signature.`                                | The `whsec_…` in `.env` doesn't match the one Stripe is signing with. Re-copy it from `stripe listen` and restart.  |
+| `400 Missing raw request body...`                              | Something changed the body parsing in [src/app.ts](src/app.ts). The webhook needs the untouched bytes — see [src/middlewares/stripeRawBody.ts](src/middlewares/stripeRawBody.ts). |
+| `409` with `details.code: "CART_INVALID"`                      | Working as designed: a price or stock level changed. Refresh the cart from `details.issues` and let the shopper re-confirm. |
+| Payment succeeds but the order stays PENDING_PAYMENT           | The webhook isn't reaching you. Is `stripe listen` still running? Check its output for delivery errors.             |
+| Two orders for one checkout                                    | The cart or address changed between the two calls, which is a genuinely different checkout. Compare `checkoutKey` on the two orders. |
+
+### 15.9. Where the code lives
+
+| File                                                                         | What it does                                                                    |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| [src/services/payment.service.ts](src/services/payment.service.ts)           | All the logic: pricing, order reuse, PaymentIntent handling, webhook processing. |
+| [src/controllers/payment.controller.ts](src/controllers/payment.controller.ts) | Thin HTTP layer.                                                                 |
+| [src/routes/payment.routes.ts](src/routes/payment.routes.ts)                 | The three URLs.                                                                  |
+| [src/stripe/client.ts](src/stripe/client.ts)                                 | The one shared Stripe SDK instance (like `src/prisma/client.ts`).                |
+| [src/utils/stripeConfig.ts](src/utils/stripeConfig.ts)                       | Environment variables and currency/amount conversion.                            |
+| [src/middlewares/stripeRawBody.ts](src/middlewares/stripeRawBody.ts)         | Keeps the raw bytes the signature is computed over.                              |
+| [tests/](tests/)                                                             | 57 tests covering pricing, idempotency, signatures and every webhook event.      |
+
+Run them with:
+
+```powershell
+npm test
+```
+
+They're pure unit tests — no database, no network, no Stripe account needed.
+
+### 15.10. What was added to the database
+
+Migration: `prisma/migrations/20260901174832_add_payments/`. It is purely additive — nothing is dropped, no column changes type, and no existing row is touched. Apply it with `npm run prisma:migrate`.
+
+**New table: `Payment`** — one row per payment *attempt* against an order. Kept separate from `Order` so Stripe's vocabulary doesn't leak into the order itself, and so retrying a declined card leaves a history rather than overwriting the previous attempt.
+
+| Column              | Type            | Notes                                                              |
+| ------------------- | --------------- | ------------------------------------------------------------------- |
+| `id`                | int, PK         |                                                                     |
+| `orderId`           | int, FK → Order | Cascades on delete.                                                 |
+| `provider`          | text            | `"stripe"`. Present so a second provider could be added later.      |
+| `providerPaymentId` | text, **unique**| The Stripe PaymentIntent id. This is the webhook's join key.        |
+| `status`            | int             | The PaymentStatus enum (`0`–`4`) — see [Payment fields](#payment-fields). |
+| `amount`            | float           | In pesos, mirroring `Order.totalAmount`.                            |
+| `currency`          | text            | Lowercase, as sent to Stripe (`"mxn"`).                             |
+| `failureCode`       | text, nullable  | Stripe's decline code from the last failed attempt.                 |
+| `failureMessage`    | text, nullable  | Human-readable failure reason.                                      |
+| `createdAt` / `updatedAt` | timestamp | |
+
+There is **no card data in this table** — no card number, no CVC, no expiry — and no client secret. Stripe Elements collects those in the browser and they never reach this server.
+
+**New table: `StripeWebhookEvent`** — the idempotency ledger.
+
+| Column          | Type             | Notes                                             |
+| --------------- | ---------------- | --------------------------------------------------- |
+| `id`            | int, PK          |                                                     |
+| `stripeEventId` | text, **unique** | Stripe's `evt_…` id. The unique index is the guard. |
+| `eventType`     | text             | e.g. `payment_intent.succeeded`.                    |
+| `processedAt`   | timestamp        |                                                     |
+
+Stripe promises *at least once* delivery, which means it will sometimes send the same event twice. Before doing any work the handler inserts the event id here; if the insert fails on the unique constraint, that event has already been handled and the redelivery is skipped. If the work then fails, the row is deleted again so Stripe's retry can pick it up.
+
+**Changed table: `Order`** — one new nullable column, `checkoutKey` (text), plus an index on `(userId, checkoutKey, status)`. It stores the fingerprint of the basket that produced the order, which is how a repeated `create-intent` call finds the order it already created instead of making another. Existing orders have `NULL` and are unaffected. `Order.payments` is the new relation to the table above.
+
+**No new Prisma `enum`s.** Payment status is an `Int`, matching how `Order.status` and `Quote.status` already work in this schema; the names live in the `PaymentStatus` TypeScript enum in [src/services/payment.service.ts](src/services/payment.service.ts).

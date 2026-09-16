@@ -138,6 +138,13 @@ model User {
 // audit trail. `statusHistory` is the source of truth for how the order got
 // there. The two are only ever written together, inside a transaction — see
 // `applyStatusChange` in src/services/order.service.ts.
+//
+// `paymentId` holds the id of the payment attempt that currently represents the
+// order (the Stripe PaymentIntent id) so staff can search orders by it, while
+// the `payments` relation keeps the full attempt history. `checkoutKey` is a
+// hash of the basket that produced the order — it is what makes
+// POST /api/payments/create-intent idempotent, letting a repeated request find
+// the order it already created instead of creating a second one.
 model Order {
   id              Int                  @id @default(autoincrement())
   userId          Int
@@ -152,10 +159,16 @@ model Order {
   paymentId       String?
   trackingNumber  String?
   notes           String?
+  checkoutKey     String?
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
   items           OrderItem[]
   statusHistory   OrderStatusHistory[]
+  payments        Payment[]
+
+  // Answers "does this shopper already have an unpaid order for exactly this
+  // basket?" when a PaymentIntent is requested.
+  @@index([userId, checkoutKey, status])
 }
 
 // Immutable audit trail of order status transitions. One row per change,
@@ -190,6 +203,54 @@ model OrderItem {
   totalAmount     Float
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// One payment attempt against an order, kept separate from `Order` so the
+// provider's vocabulary never leaks into the order itself, and so a retried
+// checkout keeps a history instead of overwriting the previous attempt.
+//
+// `status` is the numeric PaymentStatus enum (0 = PENDING … 4 = CANCELED),
+// following the same Int-enum convention as Order.status and Quote.status. It
+// is written **only** by the signature-verified Stripe webhook — never by the
+// frontend, and never from a `confirmPayment()` result.
+//
+// No card data is stored here, ever: no PAN, no CVC, no expiry, and no client
+// secret. Stripe Elements collects those in the browser; they never reach this
+// server.
+model Payment {
+  id                Int      @id @default(autoincrement())
+  orderId           Int
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  // Payment provider. Only "stripe" today; present so a second one can be added.
+  provider          String   @default("stripe")
+  // The Stripe PaymentIntent id (`pi_…`). Unique — it is the webhook's join key.
+  providerPaymentId String   @unique
+  status            Int      @default(0)
+  // Charged amount in major units (pesos), mirroring Order.totalAmount.
+  amount            Float
+  // ISO 4217 code, lowercase, exactly as sent to Stripe (e.g. "mxn").
+  currency          String
+  // Stripe's failure code/message from the most recent failed attempt.
+  failureCode       String?
+  failureMessage    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+// Idempotency ledger for Stripe webhooks. Stripe delivers each event *at least*
+// once, so the same event id can arrive repeatedly and concurrently. The handler
+// claims an event by inserting its `stripeEventId`; the unique constraint makes
+// that claim atomic, so a redelivery is recognised and skipped instead of
+// applying its effects a second time.
+model StripeWebhookEvent {
+  id            Int      @id @default(autoincrement())
+  stripeEventId String   @unique
+  eventType     String
+  processedAt   DateTime @default(now())
+
+  @@index([processedAt])
 }
 
 model Slide {

@@ -1,776 +1,782 @@
 👨‍💻
 
-# Refactor Orders
+# Implement Stripe Payments — Backend
 
-## Refactor Orders status management to use OrderStatusHistory
+I want to integrate **Stripe as a payment provider** into my e-commerce backend using **Stripe Payment Intents**, so that the Angular frontend can use **Stripe Payment Element** to collect and confirm payments.
 
-I need to refactor the existing Orders module in the backend.
-
-### Current Orders API
-
-The Orders module currently behaves like a generic CRUD resource with these endpoints:
-
-- `GET /api/orders` — List orders
-- `POST /api/orders` — Create order
-- `GET /api/orders/{id}` — Get order by ID
-- `PUT /api/orders/{id}` — Update order
-- `DELETE /api/orders/{id}` — Delete order
+Before making any changes, **inspect and understand the existing project architecture**. Do not assume that the structures, names, endpoints, models, or services described below already exist. Adapt the implementation to the project's existing conventions.
 
 ---
 
-## Desired design
+## Current Backend Stack
 
-I want to change the order status architecture so that every order has:
+The backend uses:
 
-1. `status` — the current/active status.
-2. `orderStatusHistory` — the complete audit history of status transitions.
+- Node.js
+- Express
+- TypeScript
+- Prisma
+- PostgreSQL
+- JWT authentication
+- Multer
 
-I intentionally want to **keep `status` on the Order entity**.
-
-The `status` field should be treated as the current-state projection/cache, while `orderStatusHistory` should be the source of truth for the audit trail.
-
-This allows us to retrieve the current order status efficiently without loading the entire history.
-
-The backend should be responsible for keeping these two pieces of information synchronized.
-
----
-
-## Types
-
-These are the types the frontend/shared layer will use:
-
-```typescript
-export type Order = {
-  /**
-   * Order ID
-   */
-  id: number;
-
-  /**
-   * User ID
-   */
-  userId: User["id"];
-
-  /**
-   * The client that placed the order. Populated by the read/list endpoints
-   * (which join the related user); omitted from create requests.
-   */
-  user?: User;
-
-  status: OrderStatus;
-
-  orderStatusHistory: StatusHistory<OrderStatus>[];
-
-  /**
-   * Currency code
-   * Example: USD, MXN
-   */
-  currency: string;
-
-  /**
-   * Subtotal before shipping/taxes
-   */
-  subtotalAmount: number;
-
-  /**
-   * Shipping cost
-   */
-  shippingAmount: number;
-
-  /**
-   * Taxes amount
-   */
-  taxAmount: number;
-
-  /**
-   * Final order total
-   */
-  totalAmount: number;
-
-  /**
-   * Order items
-   */
-  items: OrderItem[];
-
-  /**
-   * Shipping address
-   */
-  shippingAddress?: ShippingAddress;
-
-  /**
-   * Payment reference or transaction ID
-   */
-  paymentId?: string;
-
-  /**
-   * Tracking number
-   */
-  trackingNumber?: string;
-
-  /**
-   * Additional customer notes
-   */
-  notes?: string;
-
-  /**
-   * Order creation date
-   */
-  createdAt: Date;
-
-  /**
-   * Last update date
-   */
-  updatedAt: Date;
-};
-
-export type StatusHistory<S = OrderStatus | QuoteStatus> = {
-  id: number;
-
-  /**
-   * orderId or quoteId
-   */
-  typeId: number;
-
-  previousStatus: S;
-
-  newStatus: S;
-
-  createdAt: Date;
-
-  /**
-   * User ID, system action, or payment provider webhook.
-   */
-  changedByUser: User["id"] | "system" | "Stripe Webhook";
-
-  comment?: string;
-};
-
-export enum OrderStatus {
-  PENDING_PAYMENT = 0,
-  PAID = 1,
-  PAYMENT_FAILED = 2,
-  PENDING_PRODUCTION = 3,
-  IN_PRODUCTION = 4,
-  QUALITY_CHECK = 5,
-  READY_TO_SHIP = 6,
-  SHIPPED = 7,
-  DELIVERED = 8,
-  CANCELLED = 9,
-  REFUNDED = 10,
-}
-
-export enum QuoteStatus {
-  DRAFT,
-  SUBMITTED,
-  UNDER_REVIEW,
-  WAITING_FOR_CUSTOMER,
-  QUOTED,
-  IN_REVISION,
-  ACCEPTED,
-  CONVERTED_TO_ORDER,
-  REJECTED,
-  CANCELLED,
-  EXPIRED,
-}
-
-export type ShippingAddress = Address & {
-  fullName: string;
-  phoneNumber: string;
-};
-
-export type Address = {
-  address: string;
-  city: string;
-  state: string;
-  postalCode: string;
-  country: string;
-};
-```
+The backend is a separate project from the Angular frontend.
 
 ---
 
-## Important architectural requirement
+## Overall Integration
 
-Please do **not** treat `orderStatusHistory` as something the client sends in the `POST` or `PUT` request.
+The frontend and backend will communicate using the following payment flow:
 
-The client should never be able to directly manipulate the status history.
-
-For example, this should NOT be accepted:
-
-```json
-{
-  "status": 1,
-  "orderStatusHistory": [...]
-}
+```text
+Angular Frontend
+      │
+      │ POST /payments/create-intent
+      │
+      │ { cartId, shipping information, ... }
+      ▼
+Backend
+      │
+      ├── Authenticate user
+      ├── Validate cart
+      ├── Validate products/variants
+      ├── Calculate prices
+      ├── Calculate discounts
+      ├── Calculate shipping
+      ├── Calculate final total
+      │
+      ├── Create Order
+      │       └── PENDING_PAYMENT
+      │
+      └── Create Stripe PaymentIntent
+              │
+              └── client_secret
+      │
+      ▼
+Angular
+      │
+      ├── Initialize Stripe Elements
+      ├── Mount Payment Element
+      └── stripe.confirmPayment()
+      │
+      ▼
+Stripe
+      │
+      └── Processes payment
+      │
+      ▼
+Stripe Webhook
+      │
+      ▼
+Backend
+      │
+      ├── Verify webhook signature
+      ├── Process event idempotently
+      ├── Update Payment
+      └── Update Order
 ```
 
-The backend should create history records automatically whenever the order status changes.
-
-The client should only request a status transition through an appropriate backend operation.
+The backend must be the **source of truth for prices and payment status**.
 
 ---
 
-## Help determine the best API design
+## IMPORTANT: Inspect Before Implementing
 
-Before implementing the changes, inspect the existing Orders module and determine the best approach for status transitions based on the current architecture.
+Before modifying anything:
 
-I want to avoid treating order status as a generic editable field.
+1. Explore the entire backend project structure.
+2. Identify the existing modules/features.
+3. Find the current:
+   - Cart implementation
+   - Cart services
+   - Product models
+   - Product variants
+   - Order models
+   - Order services
+   - Order controllers
+   - Order routes
+   - Authentication middleware
+   - User models
+   - Error handling
+   - API response conventions
+   - Environment/configuration system
 
-Please evaluate whether we should:
+4. Inspect the Prisma schema.
+5. Check whether any payment-related implementation already exists.
+6. Check existing enums and Order statuses.
+7. Check the project's naming conventions.
+8. Check how transactions are currently handled.
+9. Check whether there is already a webhook architecture.
 
-#### Option A
+Do not create duplicate functionality.
 
-Keep:
+After inspecting the project, provide a **short implementation plan** explaining:
 
-```text
-PUT /api/orders/{id}
-```
+- Which existing files/components will be reused.
+- Which files will be created.
+- Which files will be modified.
+- Any Prisma changes required.
+- The API contract that will be exposed to the frontend.
 
-but make `status` a controlled field and automatically create the corresponding history record whenever it changes.
-
-#### Option B
-
-Introduce a dedicated endpoint such as:
-
-```text
-PATCH /api/orders/{id}/status
-```
-
-with a request body such as:
-
-```json
-{
-  "status": 4,
-  "comment": "Production has started."
-}
-```
-
-#### Option C
-
-Create a dedicated Order status service/method responsible for transitions, with the controller exposing a dedicated endpoint.
-
-For example:
-
-```text
-PATCH /api/orders/{id}/status
-```
-
-→ `OrderController.updateStatus()`
-
-→ `OrderService.updateStatus()`
-
-→ update `Order.status`
-
-→ create `OrderStatusHistory`
-
-I currently believe **Option C is the cleanest architecture**, but inspect the existing codebase first and confirm whether it fits the project's current Service / Controller / Repository architecture.
-
-Do not blindly implement one option without examining the existing patterns.
+Then proceed with the implementation.
 
 ---
 
-## Status transition rules
+## Stripe SDK
 
-Please introduce a centralized mechanism for validating order status transitions.
+Install the official Stripe Node.js SDK if it is not already installed.
 
-Do not allow arbitrary transitions such as:
+Use environment variables:
 
-```text
-DELIVERED → PENDING_PAYMENT
+```env
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
 ```
 
-or:
+Never hardcode these values.
 
-```text
-CANCELLED → IN_PRODUCTION
-```
-
-Define a clear transition policy based on the following lifecycle:
-
-```text
-PENDING_PAYMENT
-        ↓
-PAID
-        ↓
-PENDING_PRODUCTION
-        ↓
-IN_PRODUCTION
-        ↓
-QUALITY_CHECK
-        ↓
-READY_TO_SHIP
-        ↓
-SHIPPED
-        ↓
-DELIVERED
-```
-
-Payment failure:
-
-```text
-PENDING_PAYMENT
-        ↓
-PAYMENT_FAILED
-```
-
-Cancellation and refund should be treated as exceptional transitions and should only be allowed from appropriate states.
-
-Please determine reasonable transition rules for:
-
-- `PENDING_PAYMENT`
-- `PAID`
-- `PAYMENT_FAILED`
-- `PENDING_PRODUCTION`
-- `IN_PRODUCTION`
-- `QUALITY_CHECK`
-- `READY_TO_SHIP`
-- `SHIPPED`
-- `DELIVERED`
-- `CANCELLED`
-- `REFUNDED`
-
-Keep the transition rules centralized rather than scattering them across controllers.
+Never expose `STRIPE_SECRET_KEY` to the frontend.
 
 ---
 
-## Order creation
+## Payment API
 
-Update order creation so that the client does not need to provide `status`.
+Implement an endpoint following the existing API conventions.
 
-For a newly created order, the backend should determine the initial status.
+Conceptually:
 
-The normal initial state should be:
-
-```typescript
-OrderStatus.PENDING_PAYMENT;
+```http
+POST /payments/create-intent
 ```
 
-When an order is created, the backend should:
+The exact route may be different if the existing project uses another convention.
 
-1. Create the order with `status = PENDING_PAYMENT`.
-2. Create the first `OrderStatusHistory` entry.
-3. Use an appropriate `previousStatus` value for the initial transition.
-4. Set `newStatus = PENDING_PAYMENT`.
-5. Set `changedByUser = 'system'` when the order is created by the checkout/application flow.
-6. Perform the order creation and history creation atomically using a database transaction.
-
-Please determine the best representation for `previousStatus` on the first history entry. If the existing database schema does not support `null`, evaluate whether another explicit initial-state representation is more appropriate.
-
-Do not make assumptions without checking the existing database schema.
-
----
-
-## Status updates
-
-When the order status changes:
-
-1. Validate that the transition is allowed.
-2. Retrieve the current order status.
-3. Update `Order.status`.
-4. Create a new `OrderStatusHistory` record containing:
-   - `typeId`
-   - `previousStatus`
-   - `newStatus`
-   - `changedByUser`
-   - `comment`
-   - `createdAt`
-
-5. Perform the order update and history creation atomically.
-6. Return the updated order/status information.
-
-If the requested status is the same as the current status, do not create a duplicate history entry unless the existing architecture has a compelling reason to do so.
-
----
-
-## Payment-related status changes
-
-The order status should also be able to change automatically as a result of payment events.
-
-For example:
-
-```text
-PENDING_PAYMENT
-        ↓
-PAID
-```
-
-or:
-
-```text
-PENDING_PAYMENT
-        ↓
-PAYMENT_FAILED
-```
-
-These changes should use:
-
-```text
-changedByUser = "Stripe Webhook"
-```
-
-when the change originates from a Stripe webhook.
-
-Stripe is NOT integrated. The payment integration will be imlpemented later.
-
-The frontend must never be considered the authoritative source for successful payment confirmation.
-
----
-
-## PUT /orders/{id}
-
-Review the current `PUT /api/orders/{id}` behavior.
-
-I do NOT want clients to be able to arbitrarily modify historical or business-critical order information.
-
-Determine which fields should remain editable after order creation.
-
-In particular, evaluate whether these should be immutable after creation:
-
-- `userId`
-- `currency`
-- `subtotalAmount`
-- `shippingAmount`
-- `taxAmount`
-- `totalAmount`
-- `items`
-- `shippingAddress`
-- `paymentId`
-
-Fields such as these may have controlled update operations:
-
-- `status`
-- `trackingNumber`
-- `notes`
-
-Prefer dedicated endpoints for business operations over a generic PUT when appropriate.
-
-If the existing generic `PUT` endpoint conflicts with this design, refactor it rather than preserving CRUD behavior just for consistency.
-
----
-
-## DELETE /orders/{id}
-
-Review whether deleting orders makes sense for this business domain.
-
-Orders represent historical financial/business records, so they generally should not be physically deleted.
-
-Please determine whether:
-
-```text
-DELETE /api/orders/{id}
-```
-
-should be:
-
-- removed,
-- restricted to a special administrative operation,
-- replaced by cancellation,
-- or implemented as a soft-delete/archive operation.
-
-Do not introduce destructive deletion of paid orders.
-
-Explain the recommendation before implementing it.
-
----
-
-## GET endpoints
-
-Update the read endpoints so that:
-
-#### List
-
-```text
-GET /api/orders
-```
-
-returns the current `status`.
-
-Do NOT load the complete `orderStatusHistory` for every order in a large list unless the existing API architecture already requires it.
-
-The list endpoint should be optimized for displaying many orders.
+The frontend needs to be able to send enough information to identify the checkout/cart.
 
 For example:
 
 ```json
 {
-  "id": 123,
-  "status": 4,
-  ...
+  "cartId": "cart_123"
 }
 ```
 
-#### Detail
+If shipping information or another checkout identifier is required by the existing architecture, include it according to the existing checkout design.
 
-```text
-GET /api/orders/{id}
-```
-
-may return:
-
-```json
-{
-  "id": 123,
-  "status": 4,
-  "orderStatusHistory": [
-    ...
-  ]
-}
-```
-
-The complete status history should primarily be loaded when viewing the order detail.
-
-If appropriate, consider whether a dedicated endpoint would be cleaner:
-
-```text
-GET /api/orders/{id}/status-history
-```
-
-Evaluate this against the existing API conventions before implementing it.
+Do not accept the final order amount from the frontend.
 
 ---
 
-## Database considerations
+## Backend Price Validation
 
-Inspect the existing database schema and migrations.
+The backend must calculate the final payment amount.
 
-Determine how to represent:
+Never trust:
+
+```text
+price
+subtotal
+discount
+shipping
+tax
+total
+```
+
+sent by the frontend.
+
+The backend must:
+
+1. Retrieve the authenticated user's cart.
+2. Verify that the cart belongs to the current user.
+3. Validate that the cart is not empty.
+4. Retrieve current product/variant information from PostgreSQL.
+5. Validate quantities.
+6. Validate product availability.
+7. Calculate the current product prices.
+8. Calculate discounts according to existing business rules.
+9. Calculate shipping according to existing business rules.
+10. Calculate the final amount.
+
+The amount sent to Stripe must be generated exclusively by this backend calculation.
+
+---
+
+## Order Creation
+
+Inspect the existing Order model and lifecycle before making changes.
+
+The intended lifecycle is:
 
 ```text
 Order
-OrderStatusHistory
-```
-
-The history table/entity should have a foreign key/reference to the order.
-
-At minimum it should store:
-
-- `id`
-- `orderId`
-- `previousStatus`
-- `newStatus`
-- `changedByUser`
-- `comment`
-- `createdAt`
-
-Use appropriate indexes for:
-
-```text
-orderId
-createdAt
-```
-
-because order history will frequently be queried by order and sorted chronologically.
-
-Use a database transaction whenever:
-
-- an order is created together with its first history record
-- an order status changes together with its history record
-
-The database must never end up with:
-
-```text
-Order.status = PAID
-```
-
-while the corresponding history record was not created.
-
----
-
-## API response considerations
-
-The API should continue exposing:
-
-```typescript
-status: OrderStatus;
-```
-
-as the current status.
-
-For order detail responses, expose:
-
-```typescript
-orderStatusHistory: StatusHistory < OrderStatus > [];
-```
-
-sorted chronologically, preferably oldest → newest, unless the existing API conventions dictate otherwise.
-
-Do not expose internal database implementation details.
-
----
-
-## Permissions
-
-Review the existing authentication/authorization implementation.
-
-A customer should only be able to access their own orders.
-
-Customers should NOT be able to:
-
-- change order status
-- create arbitrary status history
-- modify payment information
-- modify order totals
-- delete orders
-
-Admin/Super Admin should have controlled access to order management.
-
-Status transitions should go through the same authorization layer as the rest of the CMS.
-
----
-
-## Important distinction
-
-Please preserve this conceptual model:
-
-```text
-Order.status
-    ↓
-Current state / optimized projection
-
-OrderStatusHistory
-    ↓
-Immutable audit trail
-```
-
-`status` is not being removed.
-
-It is intentionally kept so that listing and filtering orders does not require loading the entire history.
-
-However, application code should never update `status` without also creating the corresponding history record.
-
----
-
-## Expected result
-
-After the refactor, the Order lifecycle should look approximately like this:
-
-```text
-Create Order
-    ↓
+  ↓
 PENDING_PAYMENT
-    ↓
-OrderStatusHistory created
-    ↓
+  ↓
 Payment succeeds
-    ↓
+  ↓
 PAID
-    ↓
-OrderStatusHistory created
-    ↓
-PENDING_PRODUCTION
-    ↓
-OrderStatusHistory created
-    ↓
-IN_PRODUCTION
-    ↓
-OrderStatusHistory created
-    ↓
-QUALITY_CHECK
-    ↓
-OrderStatusHistory created
-    ↓
-READY_TO_SHIP
-    ↓
-OrderStatusHistory created
-    ↓
-SHIPPED
-    ↓
-OrderStatusHistory created
-    ↓
-DELIVERED
-    ↓
-OrderStatusHistory created
+```
+
+Create the Order **before** attempting the payment so that the PaymentIntent can be associated with an existing Order.
+
+Do not create a second Order simply because a PaymentIntent is retried.
+
+The implementation should support retrying payment for an existing pending-payment Order when appropriate.
+
+Use the existing Order states if they already provide an equivalent concept.
+
+Only introduce a new `PENDING_PAYMENT` state if necessary.
+
+---
+
+## Payment Model
+
+Inspect the existing database schema first.
+
+If there is no suitable payment model, introduce a dedicated Payment model rather than putting all Stripe-specific information directly into Order.
+
+Conceptually, we need to associate:
+
+```text
+Order
+   │
+   └── Payment
+          ├── Stripe PaymentIntent ID
+          ├── amount
+          ├── currency
+          └── status
+```
+
+Adapt field names and relationships to the existing Prisma conventions.
+
+Do not duplicate information unnecessarily.
+
+Potential payment states:
+
+```text
+PENDING
+PROCESSING
+SUCCEEDED
+FAILED
+CANCELED
+REFUNDED
+```
+
+Only add states that are actually needed.
+
+---
+
+## Stripe PaymentIntent
+
+Create the PaymentIntent using the amount calculated by the backend.
+
+Use MXN:
+
+```text
+mxn
+```
+
+Be careful with Stripe's amount representation for MXN. Verify the current Stripe API requirements rather than blindly assuming that every currency uses two decimal places.
+
+The PaymentIntent should contain metadata that allows the webhook to identify our Order.
+
+For example:
+
+```typescript
+metadata: {
+  orderId: order.id,
+  userId: user.id
+}
+```
+
+Adapt this to the actual project.
+
+Return the PaymentIntent `client_secret` to the frontend.
+
+Example response:
+
+```json
+{
+  "clientSecret": "pi_..._secret_..."
+}
+```
+
+The response must not contain:
+
+```text
+STRIPE_SECRET_KEY
+```
+
+or other server-side secrets.
+
+---
+
+## PaymentIntent Idempotency
+
+Design the implementation so that repeated requests do not unnecessarily create multiple PaymentIntents or Orders.
+
+Consider the following scenarios:
+
+```text
+User clicks Pay twice
+Network request is retried
+Browser refreshes
+Frontend retries create-intent
+```
+
+The implementation should safely handle these situations.
+
+Reuse an existing pending PaymentIntent when appropriate, or use Stripe idempotency keys where appropriate.
+
+Do not create duplicate Orders for the same checkout.
+
+---
+
+## Stripe Webhook
+
+Implement a Stripe webhook endpoint.
+
+Conceptually:
+
+```http
+POST /payments/webhook
+```
+
+Follow the project's existing route conventions.
+
+The webhook must:
+
+1. Receive the raw request body.
+2. Verify the Stripe signature using `STRIPE_WEBHOOK_SECRET`.
+3. Construct the Stripe event securely.
+4. Process supported events.
+5. Be idempotent.
+6. Return an appropriate HTTP response.
+
+IMPORTANT:
+
+Stripe webhook signature verification requires the original raw request body.
+
+Make sure Express JSON parsing does not destroy the raw body before the webhook is processed.
+
+---
+
+## Events
+
+At minimum, handle:
+
+```text
+payment_intent.succeeded
+payment_intent.payment_failed
+payment_intent.canceled
+```
+
+Determine whether additional PaymentIntent-related events are necessary based on the current implementation.
+
+For successful payment:
+
+```text
+Payment → SUCCEEDED
+Order   → PAID
+```
+
+For failed payment:
+
+```text
+Payment → FAILED
+```
+
+Update the Order appropriately according to the existing Order state machine.
+
+Do not mark an Order as `PAID` merely because the frontend reports that `confirmPayment()` returned successfully.
+
+The Stripe webhook is the authoritative confirmation.
+
+---
+
+## Webhook Idempotency
+
+Stripe may deliver the same webhook more than once.
+
+Do not process the same event multiple times.
+
+Inspect the current database architecture and implement a suitable strategy.
+
+If necessary, introduce a persisted Stripe event record, for example:
+
+```text
+StripeWebhookEvent
+    id
+    stripeEventId
+    eventType
+    processedAt
+```
+
+But only do this if it fits the existing architecture.
+
+The important requirement is:
+
+```text
+same Stripe event
+      ↓
+must not create duplicate effects
 ```
 
 ---
 
-## Implementation requirements
+## Security Requirements
 
-Before making changes:
+The implementation must:
 
-1. Inspect the existing Orders module.
-2. Inspect the current Service / Controller / Repository patterns.
-3. Inspect the database schema and migrations.
-4. Inspect existing authentication and authorization.
-5. Inspect existing status-related patterns in other modules.
-6. Inspect the current payment integration, if any.
+- Never store card numbers.
+- Never store CVC.
+- Never receive raw card information in the backend.
+- Never expose `STRIPE_SECRET_KEY` to Angular.
+- Never trust frontend-calculated totals.
+- Verify the authenticated user owns the Cart.
+- Verify the authenticated user owns the Order.
+- Verify Stripe webhook signatures.
+- Avoid logging Stripe secrets.
+- Avoid logging PaymentIntent client secrets.
+- Avoid putting secrets in URLs.
+- Validate all incoming request data.
+- Follow existing authentication and authorization middleware.
 
-Then implement the refactor consistently with the existing architecture.
-
-Do not introduce an entirely new architectural pattern if an equivalent pattern already exists in the codebase.
+Stripe Elements will collect payment information directly on the frontend.
 
 ---
 
-## Deliverables
+## Checkout Failure Scenarios
+
+Handle these situations correctly:
+
+#### Cart not found
+
+Return the project's standard not-found error.
+
+#### Cart belongs to another user
+
+Do not expose the cart.
+
+#### Empty cart
+
+Reject checkout.
+
+#### Product changed
+
+If prices or availability changed, prevent creating an incorrect payment.
+
+Return the appropriate error according to the existing API error conventions.
+
+#### PaymentIntent creation fails
+
+Do not leave inconsistent Order/Payment records.
+
+Use database transactions where appropriate.
+
+#### Stripe API error
+
+Return a safe application-level error without exposing sensitive Stripe information.
+
+---
+
+## Transactions and Consistency
+
+Pay close attention to consistency between:
+
+```text
+Database
+Stripe
+```
+
+A database transaction cannot atomically include Stripe's external API.
+
+Therefore, do not assume:
+
+```text
+DB transaction + Stripe API call
+```
+
+can be rolled back together.
+
+Design the flow so partially completed operations can be recovered safely.
+
+For example:
+
+```text
+Order created
+PaymentIntent created
+PaymentIntent creation response fails locally
+```
+
+should not result in an unrecoverable duplicate order.
+
+Use the existing architecture and appropriate idempotency mechanisms.
+
+---
+
+## Currency
+
+The store uses:
+
+```text
+MXN
+```
+
+Use:
+
+```text
+mxn
+```
+
+for Stripe unless the existing architecture indicates otherwise.
+
+Verify the current Stripe documentation for MXN amount handling before implementing the conversion.
+
+Do not blindly multiply amounts by 100 without verifying the currency's rules.
+
+---
+
+## API Contract for Frontend
+
+The final backend implementation must clearly document the contract that the Angular frontend will consume.
+
+At minimum, provide:
+
+#### Create PaymentIntent
+
+```http
+POST /payments/create-intent
+```
+
+Request:
+
+```json
+{
+  "cartId": "..."
+}
+```
+
+Response:
+
+```json
+{
+  "clientSecret": "..."
+}
+```
+
+If the actual request/response differs, document the real implementation instead.
+
+Also document:
+
+- Authentication requirements
+- HTTP status codes
+- Validation errors
+- Payment-related errors
+- Order behavior
+- Retry behavior
+
+---
+
+## Frontend Expectations
+
+The separate Angular frontend will:
+
+1. Call the create-intent endpoint.
+2. Receive the `clientSecret`.
+3. Initialize Stripe Elements.
+4. Create the Payment Element.
+5. Mount it in the checkout.
+6. Call:
+
+```typescript
+stripe.confirmPayment(...)
+```
+
+7. Handle any required redirect/authentication.
+8. Show the final payment state.
+
+The frontend will **not** create PaymentIntents directly.
+
+The frontend will **not** calculate the authoritative payment amount.
+
+The frontend will **not** mark the Order as PAID.
+
+---
+
+## Testing
+
+Add appropriate tests following the existing testing framework.
+
+Test at least:
+
+#### Payment creation
+
+- authenticated user
+- unauthenticated user
+- invalid cart
+- empty cart
+- unauthorized cart
+- invalid products
+- invalid quantities
+- price changes
+- successful PaymentIntent creation
+- Stripe API failure
+- duplicate create-intent request
+
+#### Webhook
+
+- valid signature
+- invalid signature
+- `payment_intent.succeeded`
+- `payment_intent.payment_failed`
+- `payment_intent.canceled`
+- duplicate webhook event
+- unknown event
+- Order not found
+- Payment not found
+
+Do not remove or disable existing tests.
+
+---
+
+## Documentation
+
+At the end, document:
+
+### Environment variables
+
+```env
+STRIPE_SECRET_KEY=
+STRIPE_WEBHOOK_SECRET=
+```
+
+### API endpoints
+
+Document every new or modified endpoint.
+
+### Database changes
+
+Document:
+
+- Prisma models
+- fields
+- relations
+- enums
+- migrations
+
+### Stripe flow
+
+Explain:
+
+```text
+Create PaymentIntent
+        ↓
+Payment Element
+        ↓
+confirmPayment
+        ↓
+Stripe
+        ↓
+Webhook
+        ↓
+Order PAID
+```
+
+### Local webhook development
+
+Explain how to configure Stripe CLI for local development and how to obtain the webhook signing secret.
+
+---
+
+## Code Quality
+
+Follow the existing project conventions.
+
+Do not:
+
+- Perform unrelated refactors.
+- Rename existing APIs unnecessarily.
+- Replace existing architecture.
+- Introduce unnecessary dependencies.
+- Duplicate services.
+- Hardcode configuration.
+- Disable TypeScript strictness.
+- Disable tests.
+
+Prefer small, focused changes.
+
+---
+
+## Final Report
 
 After implementation, provide:
 
-1. Summary of the architectural changes.
-2. Final API endpoints for Orders.
-3. Final request/response shapes.
-4. Database changes/migrations.
-5. Status transition rules.
-6. Explanation of how `Order.status` and `OrderStatusHistory` stay synchronized.
-7. Any recommendations for follow-up work.
+1. **Implementation summary**
+2. **Files created**
+3. **Files modified**
+4. **Prisma changes**
+5. **API contract**
+6. **Environment variables**
+7. **Stripe configuration**
+8. **Webhook implementation**
+9. **Tests executed**
+10. **Any assumptions or decisions made**
 
-Do not just implement the changes mechanically. First analyze the current codebase and make the design consistent with the existing architecture.
+If there are architectural inconsistencies or decisions that could affect the Angular frontend, explicitly call them out so the frontend implementation can consume the backend correctly.
 
-🤖
+# 🤖
 
-1. Architectural changes
-Option C was the right call — and it fits the codebase without inventing anything new. There's no repository layer here (Prisma is the data layer, called only from services), so the pattern is route → controller → service → Prisma. A dedicated PATCH /api/orders/:id/status → orderController.updateStatus → orderService.updateStatus slots straight in, and it mirrors an existing precedent: PUT /slides/reorder is already a business operation with its own route rather than a field on a generic PUT.
+Done. Here's the final report.
 
-Option A was rejected because a controlled status inside PUT still means the write path for a business transition is the same call that carries amounts and items — the thing you explicitly wanted to stop.
+## 1. Implementation summary
 
-The other structural decisions:
+Stripe Payment Intents are integrated end-to-end. The flow is: `POST /api/payments/create-intent` (JWT-authenticated) re-prices the cart from PostgreSQL, creates the Order at `PENDING_PAYMENT`, creates a Stripe PaymentIntent for that amount, and returns the `clientSecret`. `POST /api/payments/webhook/stripe` verifies the signature and is the only thing that marks an order PAID.
 
-status became numeric (Int), matching Quote.status, which was already the numeric-enum-shared-with-the-frontend pattern. It was a String with "pending" defaults before.
-One funnel for status writes. applyStatusChange in order.service.ts is the only function in the codebase that writes Order.status. Creation, the PATCH endpoint, and the future Stripe webhook all route through it.
-The DB field is statusHistory; the API exposes orderStatusHistory with typeId instead of orderId, matching your shared StatusHistory<S> type. A mapper handles the translation so storage details stay internal.
-user is now joined onto list and detail reads, using PUBLIC_USER_SELECT (exported from user.service.ts rather than duplicated) so passwordHash and friends can't leak.
-2. Final endpoints
-Method	Path	Access
-GET	/api/orders	auth; clients scoped to own
-GET	/api/orders/:id	auth + ownership
-GET	/api/orders/:id/status-history	auth + ownership
-POST	/api/orders	super/admin
-PUT	/api/orders/:id	super/admin
-PATCH	/api/orders/:id/status	super/admin
-DELETE	/api/orders/:id	super only, guarded
-I added the dedicated status-history endpoint because it matches the existing sub-resource convention (/products/:id/variants, /products/:id/tags) and lets a timeline refresh after a transition without refetching the whole order.
+Three findings from the inspection reshaped the brief:
 
-3. Request/response shapes
-POST no longer accepts status or orderStatusHistory — both return 400 rather than being silently dropped. Everything else is unchanged.
+- **There is no Cart model.** The cart lives in the frontend's LocalStorage; cart.service.ts re-validates it. So there is no `cartId` — `create-intent` takes `items[]`, the same lines `POST /api/cart/validate` accepts. This is the main thing the Angular team needs to know.
+- `PENDING_PAYMENT`/`PAID`/`PAYMENT_FAILED` already existed with a full transition table. I added no order states and reused `orderService.recordPaymentStatusChange`, which was already documented as "the seam the future webhook handler calls".
+- No test framework existed. CLAUDE.md said not to invent one, but tests were explicitly requested — so I used Node 22's built-in `node --test` with the already-present `ts-node`. No new test dependency.
 
-PUT is now a restricted merge over shippingAddress, trackingNumber, notes. Sending userId, currency, any amount, items, paymentId, or status returns a 400 naming the offending fields. That's deliberate: a caller still posting the whole legacy order object finds out immediately instead of assuming its amounts took effect. shippingAddress is editable until READY_TO_SHIP, then 409 — the parcel is already labelled.
+## 2. Files created
 
-PATCH /status takes { status, comment? } and returns the updated order with full history. There is no changedByUser field — the actor comes from the verified token.
+`src/services/payment.service.ts`, `src/controllers/payment.controller.ts`, `src/routes/payment.routes.ts`, `src/stripe/client.ts`, `src/utils/stripeConfig.ts`, `src/middlewares/stripeRawBody.ts`, `prisma/migrations/20260901174832_add_payments/`, `tests/{helpers/harness,stripeAmount.test,payment.service.test,payment.webhook.test}.ts`
 
-Reads return status everywhere; orderStatusHistory (oldest → newest) only on detail, never on the list.
+## 3. Files modified
 
-4. Database
-20260807120000_add_order_status_history, already applied:
+`prisma/schema.prisma`, `src/app.ts` (raw-body capture), `src/routes/index.ts`, `src/services/order.service.ts` (transaction-aware `createOrder`, exported `validateShippingAddress`, `checkoutKey` rejected from client bodies), `src/utils/{HttpError,apiResponse}.ts` + `src/middlewares/errorHandler.ts` (additive details field), `src/swagger.ts`, `README.md`, `CLAUDE.md`, `.env.example`, `.env`, `package.json`
 
-Converts Order.status in place with a USING CASE — your two existing orders kept their state ("pending" → 0) instead of being wiped. processing maps to 3 PENDING_PRODUCTION, the earlier of the two production states, so nothing reports as further along than it is.
-New OrderStatusHistory table, onDelete: Cascade, indexed on (orderId, createdAt) and createdAt.
-Backfills one opening entry per existing order, stamped with the order's original createdAt.
-previousStatus is nullable, and the first entry uses null — the order didn't come from another state, it started there. Postgres supports it and the schema already uses nullable ints, so a sentinel value would have been worse: it would make "created" indistinguishable from a real transition. ⚠️ Your frontend type needs widening to previousStatus: S | null.
+## 4. Prisma changes
 
-changedByUser is one String column holding either a user id as text or "system" / "Stripe Webhook". The API converts numeric-looking values back to numbers, so the response matches your User['id'] | 'system' | 'Stripe Webhook' union exactly.
+Purely additive — no drops, no type changes, no existing row touched. `Payment` (numeric `status`, unique `providerPaymentId`), `StripeWebhookEvent` (unique `stripeEventId` as the idempotency guard), and `Order.checkoutKey` + index + `payments[]`. No Prisma `enum` — `Int` status matches how `Order.status` and `Quote.status` already work.
 
-5. Transition rules
-Centralized in ORDER_STATUS_TRANSITIONS. Normal path 0 → 1 → 3 → 4 → 5 → 6 → 7 → 8, plus: PAYMENT_FAILED → PENDING_PAYMENT (retry), QUALITY_CHECK → IN_PRODUCTION (rework). Two rules of thumb drove the exceptional cases — cancellation only while the sign is still with you (nothing from SHIPPED onward), refund only where money was actually taken (never from PENDING_PAYMENT/PAYMENT_FAILED). CANCELLED and REFUNDED are terminal. Illegal transitions return 409 with the allowed set listed.
+## 5. API contract
 
-6. How the two stay in sync
-Both writes happen in one prisma.$transaction inside applyStatusChange — the DB can't hold status = PAID without the matching entry, because both commit or neither does. Order creation does the same for the row plus its opening entry.
+Endpoint Auth Notes
+`POST /api/payments/create-intent` **JWT** `{ items[], shippingAddress?, notes?, orderId? }` → `{ clientSecret, paymentIntentId, orderId, amount, currency, status, reused, order }`. `201` created / `200` fully reused.
+`GET /api/payments/order/:orderId` **JWT** Payment attempts; same ownership rule as the order.
+`POST /api/payments/webhook/stripe` **signature** Handles `succeeded`, `processing`, `payment_failed`, `canceled`.
 
-One thing I added beyond the spec: the update is conditional on the status that was read (WHERE id = ? AND status = ?). Two staff members hitting the same order simultaneously would otherwise both pass validation and one would silently overwrite the other, leaving a history that doesn't match. Now the loser matches zero rows and gets a 409 to retry.
+Errors: `400` (malformed, or any amount field — rejected, not ignored), `401`, `403`, `404`, `409` (`details.code`: `CART_INVALID` with the full `issues[]`, `ORDER_ALREADY_PAID`, `ORDER_NOT_PAYABLE`), `502`, `503`.
 
-7. Recommendations
-Frontend type fix: previousStatus: S | null.
-Breaking change to flag: anything sending or reading the old status strings.
-Stripe: orderService.recordPaymentStatusChange() is the seam, with no route exposed on purpose. Wire it to a signature-verified webhook only — a browser claiming payment succeeded is a claim, not proof.
-Order creation by customers stays staff-only as you chose; checkout will need its own endpoint that derives amounts server-side from the cart rather than trusting the body.
-OrderItem deletion is now unreachable — PUT no longer replaces items, and there's no other path. If you need to correct a line, that's a follow-up decision (an amendment operation, or accepting that orders are immutable once placed).
-TODOS.md line 5 (sortBy/sortDirection on the orders list) is still open — I left it alone as out of scope.
-Both docs are updated in the same change set: Swagger (verified serving all four order paths and the new schemas) and README, which gained a status table, the transition matrix, the sync explanation, the payment note, and a migration section written for someone who hasn't done backend work before.
+## 6–8. Environment, Stripe config, webhook
+
+`STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_CURRENCY=mxn`. Production boot fails without the first two. Local setup via `stripe listen` is documented in README §15.7.
+
+Raw body: `express.json({ verify: captureRawBody })` keeps the untouched bytes for the webhook path only — route-level express.raw() cannot work here because the global JSON parser already consumed the stream. Idempotency: the event id is claimed before processing and the claim is released if processing throws, so Stripe's retry can re-apply it.
+
+## 9. Tests executed
+
+57/57 passing (`npm test`), plus `tsc --noEmit`, `npm run build`, and three live checks: signature verification through the real Express stack on a booted server (valid → 200, tampered → 400, redelivery → `duplicate: true`), the advisory-lock SQL against real PostgreSQL, and `prisma migrate diff` confirming no drift. I deleted the one test row the live check left in your dev database.
+
+## 10. Decisions and things to flag
+
+- Verified, not assumed: MXN is a two-decimal currency (`$1,465.20` → `146520`), minimum charge MXN 10.00. `toStripeAmount` handles zero-, two- and three-decimal currencies rather than blindly multiplying by 100.
+- Shipping and tax are 0 — because that is what `cartService.validateCart` already does. Inventing a rule the rest of the app doesn't apply would quote the shopper one total and charge another. Both are isolated functions with a comment marking where real rules go.
+- Stock is not decremented. The existing order flow doesn't do it either; adding inventory reservation was beyond this scope. Worth raising separately — it's a real oversell risk at checkout.
+- `shippingAddress` is optional, matching the existing `Order` model rather than imposing a new requirement on the frontend.
+- **A price change mid-checkout produces a new order**, leaving the old unpaid one behind (deletable). The alternative — mutating a financial record's amounts — seemed worse.
+- **Edge case needing a human**: a payment succeeding for an order already `CANCELLED` is recorded on the payment and logged loudly as needing a manual refund. `CANCELLED` is terminal in your state machine, so there is no correct automatic action.
+
+**For the Angular team specifically**: send cart lines, never amounts (a `totalAmount` in the body is a `400`); and a resolved `confirmPayment()` is **not** proof of payment — poll `GET /api/orders/{id}` for status `1`, since the webhook occasionally lands after the browser redirect.

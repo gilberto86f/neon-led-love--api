@@ -13,7 +13,7 @@ export const errorHandler = (
   _next: NextFunction
 ) => {
   if (err instanceof HttpError) {
-    res.status(err.status).json(fail(err.message, err.status));
+    res.status(err.status).json(fail(err.message, err.status, err.details));
     return;
   }
   console.error('[unhandled]', err);

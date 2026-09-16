@@ -189,6 +189,7 @@ const IMMUTABLE_UPDATE_FIELDS = [
   "status",
   "orderStatusHistory",
   "statusHistory",
+  "checkoutKey",
 ] as const;
 
 type Rec = Record<string, any>;
@@ -214,7 +215,11 @@ const optionalString = (input: Rec, field: string) => {
   }
 };
 
-const validateShippingAddress = (addr: ShippingAddressInput) => {
+/**
+ * Shared with the checkout flow (paymentService) so an address is validated the
+ * same way whether the order is being created now or was created earlier.
+ */
+export const validateShippingAddress = (addr: ShippingAddressInput) => {
   if (typeof addr !== "object" || addr === null || Array.isArray(addr)) {
     throw new HttpError(400, `Field "shippingAddress" must be an object`);
   }
@@ -286,6 +291,15 @@ const validateCreate = (input: Rec) => {
       `Field "orderStatusHistory" is read-only: the server writes it on every status change.`,
     );
   }
+  const serverOnly = SERVER_ONLY_CREATE_FIELDS.filter((field) =>
+    Object.prototype.hasOwnProperty.call(input, field),
+  );
+  if (serverOnly.length > 0) {
+    throw new HttpError(
+      400,
+      `These fields are set by the server and cannot be supplied: ${serverOnly.join(", ")}.`,
+    );
+  }
 
   if (!Number.isInteger(input.userId) || (input.userId as number) <= 0) {
     throw new HttpError(400, `Field "userId" must be a positive integer`);
@@ -322,6 +336,13 @@ const validateCreate = (input: Rec) => {
   optionalString(input, "trackingNumber");
   optionalString(input, "notes");
 };
+
+/**
+ * Fields that only the server may set on create. `checkoutKey` is derived from
+ * the validated basket by the checkout flow — a client that could choose it
+ * could attach its order to someone else's checkout.
+ */
+const SERVER_ONLY_CREATE_FIELDS = ["checkoutKey"] as const;
 
 /**
  * Validates the restricted update payload. Sending an immutable field is a hard
@@ -399,8 +420,11 @@ const normalizeCreate = (input: OrderInput) => ({
   notes: input.notes?.trim() || null,
 });
 
-const ensureUserExists = async (userId: number) => {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+const ensureUserExists = async (
+  userId: number,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
+) => {
+  const user = await client.user.findUnique({ where: { id: userId } });
   if (!user) throw new HttpError(400, `User not found ${userId}`);
 };
 
@@ -606,16 +630,28 @@ export const orderService = {
    * Creates the order at PENDING_PAYMENT together with its opening history
    * entry, atomically. The first entry has `previousStatus: null` — the order
    * did not come from another state, it started here.
+   *
+   * `options.checkoutKey` is the basket fingerprint the checkout flow uses to
+   * recognise a repeated create-intent request; it is a server-only field and
+   * is rejected if it arrives in `input` (see `validateCreate`).
+   *
+   * `options.tx` lets a caller run the creation inside a transaction it already
+   * opened — the checkout flow does this so "look for an existing unpaid order,
+   * otherwise create one" is a single atomic step. When it is omitted the
+   * method opens its own transaction, exactly as before.
    */
-  createOrder: async (input: OrderInput) => {
+  createOrder: async (
+    input: OrderInput,
+    options: { checkoutKey?: string | null; tx?: Prisma.TransactionClient } = {},
+  ) => {
     validateCreate(input);
     const normalized = normalizeCreate(input);
-    await ensureUserExists(normalized.userId);
 
-    return prisma.$transaction(async (tx) => {
+    const run = async (tx: Prisma.TransactionClient) => {
       const created = await tx.order.create({
         data: {
           ...normalized,
+          checkoutKey: options.checkoutKey?.trim() || null,
           status: OrderStatus.PENDING_PAYMENT,
           shippingAddress: normalized.shippingAddress ?? Prisma.JsonNull,
           items: { create: input.items.map(normalizeItem) },
@@ -638,7 +674,10 @@ export const orderService = {
         include: DETAIL_INCLUDE,
       });
       return toOrder(order as Rec);
-    });
+    };
+
+    await ensureUserExists(normalized.userId, options.tx);
+    return options.tx ? run(options.tx) : prisma.$transaction(run);
   },
 
   /**
